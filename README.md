@@ -111,7 +111,7 @@ Der Fokus liegt auf:
 
 ## Lizenz
 dieses Projekt ist unter der Mozilla Public License 2.0 veröffentlicht.
-Für Details [LICENSE](LICENSE) 
+Für Details siehe: [Lizenz](MPL-2.0-1-ov-file) 
 
 ---
 
