@@ -1,140 +1,161 @@
-﻿using Flashy_Ger.NINA.Platesolveplus.Properties;
-using NINA.Core.Model;
-using NINA.Core.Utility;
-using NINA.Image.ImageData;
+﻿using NINA.Core.Utility;
 using NINA.Plugin;
 using NINA.Plugin.Interfaces;
 using NINA.Profile;
 using NINA.Profile.Interfaces;
-using NINA.WPF.Base.Interfaces.Mediator;
-using NINA.WPF.Base.Interfaces.ViewModel;
 using System;
-using System.Collections.Generic;
 using System.ComponentModel;
 using System.ComponentModel.Composition;
-using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Text;
 using System.Threading.Tasks;
-using Settings = Flashy_Ger.NINA.Platesolveplus.Properties.Settings;
 
 namespace Flashy_Ger.NINA.Platesolveplus {
-    /// <summary>
-    /// This class exports the IPluginManifest interface and will be used for the general plugin information and options
-    /// The base class "PluginBase" will populate all the necessary Manifest Meta Data out of the AssemblyInfo attributes. Please fill these accoringly
-    /// 
-    /// An instance of this class will be created and set as datacontext on the plugin options tab in N.I.N.A. to be able to configure global plugin settings
-    /// The user interface for the settings will be defined by a DataTemplate with the key having the naming convention "Platesolveplus_Options" where Platesolveplus corresponds to the AssemblyTitle - In this template example it is found in the Options.xaml
-    /// </summary>
     [Export(typeof(IPluginManifest))]
-    public internal class Platesolveplus : PluginBase, INotifyPropertyChanged {
-    private readonly IPluginOptionsAccessor pluginSettings;
-    private readonly IProfileService profileService;
-    private readonly IImageSaveMediator imageSaveMediator;
+    public class Platesolveplus : PluginBase, INotifyPropertyChanged {
+        private readonly IPluginOptionsAccessor pluginSettings;
+        private readonly IProfileService profileService;
 
-    // Implementing a file pattern
-    private readonly ImagePattern exampleImagePattern = new ImagePattern("$$EXAMPLEPATTERN$$", "An example of an image pattern implementation", "PlateSolvePlus");
+        [ImportingConstructor]
+        public Platesolveplus(IProfileService profileService) {
+            this.profileService = profileService;
 
-    [ImportingConstructor]
-    public Platesolveplus(IProfileService profileService, IOptionsVM options, IImageSaveMediator imageSaveMediator) {
-        if (Settings.Default.UpdateSettings) {
-            Settings.Default.Upgrade();
-            Settings.Default.UpdateSettings = false;
-            CoreUtil.SaveSettings(Settings.Default);
+            // Profile-specific settings store
+            this.pluginSettings = new PluginOptionsAccessor(profileService, Guid.Parse(this.Identifier));
+
+            // React on profile change so Options UI updates
+            profileService.ProfileChanged += ProfileService_ProfileChanged;
         }
 
-        // This helper class can be used to store plugin settings that are dependent on the current profile
-        this.pluginSettings = new PluginOptionsAccessor(profileService, Guid.Parse(this.Identifier));
-        this.profileService = profileService;
-        // React on a changed profile
-        profileService.ProfileChanged += ProfileService_ProfileChanged;
-
-        // Hook into image saving for adding FITS keywords or image file patterns
-        this.imageSaveMediator = imageSaveMediator;
-
-        // Run these handlers when an image is being saved
-        this.imageSaveMediator.BeforeImageSaved += ImageSaveMediator_BeforeImageSaved;
-        this.imageSaveMediator.BeforeFinalizeImageSaved += ImageSaveMediator_BeforeFinalizeImageSaved;
-
-        // Register a new image file pattern for the Options > Imaging > File Patterns area
-        options.AddImagePattern(exampleImagePattern);
-    }
-
-    public override Task Teardown() {
-        // Make sure to unregister an event when the object is no longer in use. Otherwise garbage collection will be prevented.
-        profileService.ProfileChanged -= ProfileService_ProfileChanged;
-        imageSaveMediator.BeforeImageSaved -= ImageSaveMediator_BeforeImageSaved;
-        imageSaveMediator.BeforeFinalizeImageSaved -= ImageSaveMediator_BeforeFinalizeImageSaved;
-
-        return base.Teardown();
-    }
-
-    private void ProfileService_ProfileChanged(object sender, EventArgs e) {
-        // Rase the event that this profile specific value has been changed due to the profile switch
-        RaisePropertyChanged(nameof(ProfileSpecificNotificationMessage));
-    }
-
-    private Task ImageSaveMediator_BeforeImageSaved(object sender, BeforeImageSavedEventArgs e) {
-        // Insert the example FITS keyword of a specific data type into the image metadata object prior to the file being saved
-        // FITS keywords have a maximum of 8 characters. Comments are options. Comments that are too long will be truncated.
-
-        string exampleKeywordComment = "This is a {0} keyword";
-
-        // string
-        string exampleStringKeywordName = "STRKEYWD";
-        string exampleStringKeywordValue = "Example";
-        e.Image.MetaData.GenericHeaders.Add(new StringMetaDataHeader(exampleStringKeywordName, exampleStringKeywordValue, string.Format(exampleKeywordComment, "string")));
-
-        // integer
-        string exampleIntKeywordName = "INTKEYWD";
-        int exampleIntKeywordValue = 5;
-        e.Image.MetaData.GenericHeaders.Add(new IntMetaDataHeader(exampleIntKeywordName, exampleIntKeywordValue, string.Format(exampleKeywordComment, "integer")));
-
-        // double
-        string exampleDoubleKeywordName = "DBLKEYWD";
-        double exampleDoubleKeywordValue = 1.3d;
-        e.Image.MetaData.GenericHeaders.Add(new DoubleMetaDataHeader(exampleDoubleKeywordName, exampleDoubleKeywordValue, string.Format(exampleKeywordComment, "double")));
-
-        // Classes also exist for other data types:
-        // BoolMetaDataHeader()
-        // DateTimeMetaDataHeader()
-
-        return Task.CompletedTask;
-    }
-
-    private Task ImageSaveMediator_BeforeFinalizeImageSaved(object sender, BeforeFinalizeImageSavedEventArgs e) {
-        // Populate the example image pattern with data. This can provide data that may not be immediately available
-        e.AddImagePattern(new ImagePattern(exampleImagePattern.Key, exampleImagePattern.Description, exampleImagePattern.Category) {
-            Value = $"{DateTime.Now:yyyy-MM-ddTHH:mm:ss.ffffffK}"
-        });
-
-        return Task.CompletedTask;
-    }
-
-    public string DefaultNotificationMessage {
-        get {
-            return Settings.Default.DefaultNotificationMessage;
+        public override Task Teardown() {
+            profileService.ProfileChanged -= ProfileService_ProfileChanged;
+            return base.Teardown();
         }
-        set {
-            Settings.Default.DefaultNotificationMessage = value;
-            CoreUtil.SaveSettings(Settings.Default);
-            RaisePropertyChanged();
-        }
-    }
 
-    public string ProfileSpecificNotificationMessage {
-        get {
-            return pluginSettings.GetValueString(nameof(ProfileSpecificNotificationMessage), string.Empty);
+        private void ProfileService_ProfileChanged(object sender, EventArgs e) {
+            // Raise all properties so the Options UI refreshes when profile switches
+            RaisePropertyChanged(string.Empty);
         }
-        set {
-            pluginSettings.SetValueString(nameof(ProfileSpecificNotificationMessage), value);
-            RaisePropertyChanged();
-        }
-    }
 
-    public event PropertyChangedEventHandler PropertyChanged;
-    protected void RaisePropertyChanged([CallerMemberName] string propertyName = null) {
-        this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        // =========================
+        // PlateSolvePlus settings
+        // =========================
+
+        // --- Guider Capture ---
+        public double GuideExposureSeconds {
+            get => Get(nameof(GuideExposureSeconds), 2.0);
+            set => Set(nameof(GuideExposureSeconds), value);
+        }
+
+        public int GuideGain {
+            get => Get(nameof(GuideGain), -1); // -1 = ignore/auto
+            set => Set(nameof(GuideGain), value);
+        }
+
+        public int GuideBinning {
+            get => Get(nameof(GuideBinning), 1);
+            set => Set(nameof(GuideBinning), Math.Max(1, value));
+        }
+
+        // --- Optics / Scale ---
+        public double GuideFocalLengthMm {
+            get => Get(nameof(GuideFocalLengthMm), 240.0);
+            set => Set(nameof(GuideFocalLengthMm), Math.Max(1.0, value));
+        }
+
+        public bool UseCameraPixelSize {
+            get => Get(nameof(UseCameraPixelSize), true);
+            set => Set(nameof(UseCameraPixelSize), value);
+        }
+
+        public double GuidePixelSizeUm {
+            get => Get(nameof(GuidePixelSizeUm), 3.75);
+            set => Set(nameof(GuidePixelSizeUm), Math.Max(0.1, value));
+        }
+
+        // --- Solver ---
+        public double SolverSearchRadiusDeg {
+            get => Get(nameof(SolverSearchRadiusDeg), 5.0);
+            set => Set(nameof(SolverSearchRadiusDeg), Math.Max(0.1, value));
+        }
+
+        public int SolverTimeoutSec {
+            get => Get(nameof(SolverTimeoutSec), 60);
+            set => Set(nameof(SolverTimeoutSec), Math.Max(5, value));
+        }
+
+        public int SolverDownsample {
+            get => Get(nameof(SolverDownsample), 2);
+            set => Set(nameof(SolverDownsample), Math.Max(1, value));
+        }
+
+        // --- Offset ---
+        public bool OffsetEnabled {
+            get => Get(nameof(OffsetEnabled), false);
+            set => Set(nameof(OffsetEnabled), value);
+        }
+
+        public double OffsetRaArcsec {
+            get => Get(nameof(OffsetRaArcsec), 0.0);
+            set => Set(nameof(OffsetRaArcsec), value);
+        }
+
+        public double OffsetDecArcsec {
+            get => Get(nameof(OffsetDecArcsec), 0.0);
+            set => Set(nameof(OffsetDecArcsec), value);
+        }
+
+        public DateTime OffsetLastCalibratedUtc {
+            get => Get(nameof(OffsetLastCalibratedUtc), DateTime.MinValue);
+            set => Set(nameof(OffsetLastCalibratedUtc), value);
+        }
+
+        // =========================
+        // Helpers (typed get/set)
+        // =========================
+
+        private T Get<T>(string key, T defaultValue) {
+            // PluginOptionsAccessor supports typed values, but not always generically.
+            // We'll route by type to keep it simple & safe.
+            if (typeof(T) == typeof(string))
+                return (T)(object)pluginSettings.GetValueString(key, defaultValue as string);
+
+            if (typeof(T) == typeof(int))
+                return (T)(object)pluginSettings.GetValueInt32(key, Convert.ToInt32(defaultValue));
+
+            if (typeof(T) == typeof(double))
+                return (T)(object)pluginSettings.GetValueDouble(key, Convert.ToDouble(defaultValue));
+
+            if (typeof(T) == typeof(bool))
+                return (T)(object)pluginSettings.GetValueBoolean(key, Convert.ToBoolean(defaultValue));
+
+            if (typeof(T) == typeof(DateTime)) {
+                var s = pluginSettings.GetValueString(key, ((DateTime)(object)defaultValue).ToString("o"));
+                return (T)(object)(DateTime.TryParse(s, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt) ? dt : (DateTime)(object)defaultValue);
+            }
+
+            return defaultValue;
+        }
+
+        private void Set<T>(string key, T value, [CallerMemberName] string propertyName = null) {
+            if (typeof(T) == typeof(string))
+                pluginSettings.SetValueString(key, value as string);
+            else if (typeof(T) == typeof(int))
+                pluginSettings.SetValueInt32(key, Convert.ToInt32(value));
+            else if (typeof(T) == typeof(double))
+                pluginSettings.SetValueDouble(key, Convert.ToDouble(value));
+            else if (typeof(T) == typeof(bool))
+                pluginSettings.SetValueBoolean(key, Convert.ToBoolean(value));
+            else if (typeof(T) == typeof(DateTime))
+                pluginSettings.SetValueString(key, ((DateTime)(object)value).ToString("o"));
+            else
+                pluginSettings.SetValueString(key, value?.ToString() ?? string.Empty);
+
+            RaisePropertyChanged(propertyName);
+        }
+
+        public event PropertyChangedEventHandler PropertyChanged;
+        protected void RaisePropertyChanged([CallerMemberName] string propertyName = null) {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
     }
-}
 }

@@ -1,18 +1,11 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel.Composition;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.ComponentModel.Composition;
 using System.Windows;
 
 namespace Flashy_Ger.NINA.Platesolveplus {
-
     [Export(typeof(ResourceDictionary))]
-    partial internal class Options : ResourceDictionary {
-
-    public Options() {
-        InitializeComponent();
+    public partial class Options : ResourceDictionary {
+        public Options() {
+            InitializeComponent();
+        }
     }
-}
 }

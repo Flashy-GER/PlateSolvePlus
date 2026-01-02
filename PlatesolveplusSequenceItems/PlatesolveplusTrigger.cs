@@ -30,7 +30,7 @@ namespace Flashy_Ger.NINA.Platesolveplus.PlatesolveplusTestCategory {
     [ExportMetadata("Category", "PlateSolvePlus")]
     [Export(typeof(ISequenceTrigger))]
     [JsonObject(MemberSerialization.OptIn)]
-    public internal class PlatesolveplusTrigger : SequenceTrigger {
+    public class PlatesolveplusTrigger : SequenceTrigger {
     /// <summary>
     /// The constructor marked with [ImportingConstructor] will be used to import and construct the object
     /// General device interfaces can be added to the constructor parameters and will be automatically injected on instantiation by the plugin loader
