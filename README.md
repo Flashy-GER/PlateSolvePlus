@@ -1,6 +1,6 @@
 ﻿# PlateSolvePlus
 
-**PlateSolvePlus** ist ein Plugin für **N.I.N.A. (Nighttime Imaging ‘N’ Astronomy)**, das es ermöglicht, **Plate Solving über eine separate Guiding-Kamera und ein Guiding-Teleskop** durchzuführen – unabhängig von der Hauptkamera.
+**PlateSolvePlus** ist ein Plugin für [**N.I.N.A. (Nighttime Imaging ‘N’ Astronomy)**](https://nighttime-imaging.eu/), das es ermöglicht, **Plate Solving über eine separate Guiding-Kamera und ein Guiding-Teleskop** durchzuführen – unabhängig von der Hauptkamera.
 
 Das Plugin richtet sich an Astrofotografen, die ihr Guiding-Setup gezielt für schnelles, robustes und ressourcenschonendes Plate Solving nutzen möchten.
 
@@ -110,8 +110,8 @@ Der Fokus liegt auf:
 ---
 
 ## Lizenz
-dieses Projekt ist unter der Mozilla Public License 2.0 veröffentlicht.
-Für Details siehe: [Lizenz](MPL-2.0-1-ov-file) 
+[dieses Projekt ist unter der Mozilla Public License 2.0 veröffentlicht.
+Für Details siehe: [Lizenz](MPL-2.0-1-ov-file) ](https://github.com/Flashy-GER/PlateSolvePlus/tree/master?tab=MPL-2.0-1-ov-file)
 
 ---
 
