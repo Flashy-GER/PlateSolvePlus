@@ -110,7 +110,8 @@ Der Fokus liegt auf:
 ---
 
 ## Lizenz
-*(optional – hier später einfügen, z. B. MIT)*
+dieses Projekt ist unter der Mozilla Public License 2.0 veröffentlicht.
+Für Details [LICENSE](LICENSE) 
 
 ---
 
