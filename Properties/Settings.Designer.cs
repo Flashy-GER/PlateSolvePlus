@@ -8,7 +8,7 @@
 // </auto-generated>
 //------------------------------------------------------------------------------
 
-namespace Flashy_Ger.NINA.Platesolveplus.Properties {
+namespace NINA.Plugins.PlateSolvePlus.Properties {
     
     
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]

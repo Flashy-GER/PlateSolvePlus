@@ -1,4 +1,4 @@
-﻿using Flashy_Ger.NINA.Platesolveplus.Properties;
+﻿using NINA.Plugins.PlateSolvePlus.Properties;
 using Newtonsoft.Json;
 using NINA.Core.Model;
 using NINA.Core.Utility.Notification;
@@ -12,7 +12,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 
-namespace Flashy_Ger.NINA.Platesolveplus.PlatesolveplusTestCategory {
+namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusTestCategory {
     /// <summary>
     /// This Class shows the basic principle on how to add a new Sequence Instruction to the N.I.N.A. sequencer via the plugin interface
     /// For ease of use this class inherits the abstract SequenceItem which already handles most of the running logic, like logging, exception handling etc.

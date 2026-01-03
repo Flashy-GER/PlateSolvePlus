@@ -1,7 +1,7 @@
 ﻿using System.ComponentModel.Composition;
 using System.Windows;
 
-namespace Flashy_Ger.NINA.Platesolveplus {
+namespace NINA.Plugins.PlateSolvePlus {
     [Export(typeof(ResourceDictionary))]
     public partial class Options : ResourceDictionary {
         public Options() {

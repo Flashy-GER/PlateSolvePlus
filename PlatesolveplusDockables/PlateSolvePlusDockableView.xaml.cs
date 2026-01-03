@@ -1,6 +1,6 @@
 ﻿using System.Windows.Controls;
 
-namespace Flashy_Ger.NINA.Platesolveplus.PlatesolveplusDockables {
+namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
     public partial class PlateSolvePlusDockableView : UserControl {
         public PlateSolvePlusDockableView() {
             InitializeComponent();

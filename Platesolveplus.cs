@@ -1,5 +1,4 @@
-﻿using NINA.Core.Utility;
-using NINA.Plugin;
+﻿using NINA.Plugin;
 using NINA.Plugin.Interfaces;
 using NINA.Profile;
 using NINA.Profile.Interfaces;
@@ -9,7 +8,7 @@ using System.ComponentModel.Composition;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 
-namespace Flashy_Ger.NINA.Platesolveplus {
+namespace NINA.Plugins.PlateSolvePlus {
     [Export(typeof(IPluginManifest))]
     public class Platesolveplus : PluginBase, INotifyPropertyChanged {
         private readonly IPluginOptionsAccessor pluginSettings;

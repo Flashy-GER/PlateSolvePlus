@@ -2,8 +2,8 @@
   <PropertyGroup>
     <TargetFramework>net8.0-windows</TargetFramework>
     <OutputType>Library</OutputType>
-    <RootNamespace>Flashy_Ger.NINA.Platesolveplus</RootNamespace>
-    <AssemblyName>Flashy_Ger.NINA.Platesolveplus</AssemblyName>
+    <RootNamespace>NINA.Plugins.PlateSolvePlus</RootNamespace>
+    <AssemblyName>PlateSolvePlus</AssemblyName>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <UseWPF>true</UseWPF>
     <ImportWindowsDesktopTargets>true</ImportWindowsDesktopTargets>
@@ -13,6 +13,11 @@
     <PackageReference Include="NINA.Plugin" Version="3.2.0.9001" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Update="Properties\Resources.Designer.cs">
+      <DesignTime>True</DesignTime>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Resources.resx</DependentUpon>
+    </Compile>
     <Compile Update="Properties\Settings.Designer.cs">
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <AutoGen>True</AutoGen>
@@ -26,10 +31,24 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <Folder Include="PlatesolveplusDrivers\" />
+    <EmbeddedResource Update="Properties\Resources.resx">
+      <Generator>ResXFileCodeGenerator</Generator>
+      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
+    </EmbeddedResource>
   </ItemGroup>
-  <PropertyGroup />
-  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-    <Exec Command="&#xD;&#xA;if not exist &quot;%25localappdata%25\NINA\Plugins\3.0.0&quot; (&#xD;&#xA;  echo &quot;Creating $(PlatformName) Plugins folder&quot;&#xD;&#xA;  mkdir &quot;%25localappdata%25\NINA\Plugins\3.0.0&quot;&#xD;&#xA;)&#xD;&#xA;if not exist &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)&quot; (&#xD;&#xA;  echo &quot;Creating $(PlatformName) Plugins $(TargetName) folder&quot;&#xD;&#xA;  mkdir &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)&quot;&#xD;&#xA;)&#xD;&#xA;&#xD;&#xA;echo &quot;Copying $(PlatformName) $(TargetFileName)&quot;&#xD;&#xA;xcopy &quot;$(TargetPath)&quot; &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)&quot; /h/i/c/k/e/r/y&#xD;&#xA;  " />
-  </Target>
+	<PropertyGroup />
+	<Target Name="PostBuild" AfterTargets="PostBuildEvent">
+		<Exec Command="
+if not exist &quot;%25localappdata%25\NINA\Plugins\3.0.0&quot; (
+  echo Creating Plugins folder
+  mkdir &quot;%25localappdata%25\NINA\Plugins\3.0.0&quot;
+)
+if not exist &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)&quot; (
+  echo Creating Plugin folder: $(TargetName)
+  mkdir &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)&quot;
+)
+
+echo Copying $(TargetFileName) to NINA plugin folder
+xcopy &quot;$(TargetPath)&quot; &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)\&quot; /y /i" />
+</Target>
 </Project>

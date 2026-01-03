@@ -8,7 +8,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Flashy_Ger.NINA.Platesolveplus.PlatesolveplusTestCategory {
+namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusSequenceItems {
     /// <summary>
     /// This Class shows the basic principle on how to add a new Sequence Trigger to the N.I.N.A. sequencer via the plugin interface
     /// For ease of use this class inherits the abstract SequenceTrigger which already handles most of the running logic, like logging, exception handling etc.
