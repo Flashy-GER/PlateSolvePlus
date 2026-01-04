@@ -1,41 +1,23 @@
 <ResourceDictionary
     x:Class="NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables.PlatesolveplusDockableTemplates"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="clr-namespace:NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables">
 
-    <!-- Dockable Template: Key = Vollqualifizierter Dockable-Klassenname + _Dockable -->
+    <!--
+      WICHTIG: Der Key muss exakt dem Typ entsprechen, der als Text im Dockable angezeigt wird + "_Dockable".
+      Da du aktuell den Typnamen siehst, aber noch nicht sicher ist ob es Dockable oder DockableVM ist,
+      registrieren wir einfach BEIDE Keys auf dieselbe View. Das ist der schnellste "ich will's JETZT sehen"-Fix.
+    -->
+
+    <!-- Falls DataContext = ...PlateSolvePlusDockable -->
     <DataTemplate x:Key="NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables.PlateSolvePlusDockable_Dockable">
-        <Grid Margin="8">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-            </Grid.RowDefinitions>
+        <local:PlateSolvePlusDockableView />
+    </DataTemplate>
 
-            <TextBlock Grid.Row="0"
-                       Text="{Binding StatusText}"
-                       FontSize="16"
-                       FontWeight="SemiBold"
-                       Margin="0,0,0,6"/>
-
-            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,8">
-                <Button Content="Connect"
-                        Command="{Binding ConnectSecondaryCommand}"
-                        Margin="0,0,6,0" />
-                <Button Content="Disconnect"
-                        Command="{Binding DisconnectSecondaryCommand}"
-                        Margin="0,0,6,0" />
-                <Button Content="Capture + Solve"
-                        Command="{Binding CaptureAndSolveCommand}" />
-            </StackPanel>
-
-            <TextBox Grid.Row="2"
-                     Text="{Binding DetailsText}"
-                     TextWrapping="Wrap"
-                     AcceptsReturn="True"
-                     VerticalScrollBarVisibility="Auto"
-                     HorizontalScrollBarVisibility="Auto"/>
-        </Grid>
+    <!-- Falls DataContext = ...PlateSolvePlusDockableVM -->
+    <DataTemplate x:Key="NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables.PlateSolvePlusDockableVM_Dockable">
+        <local:PlateSolvePlusDockableView />
     </DataTemplate>
 
     <!-- Icon (optional) -->
