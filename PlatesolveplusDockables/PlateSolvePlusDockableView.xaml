@@ -11,12 +11,91 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
             <!-- =========================
-                 SECTION 1: Existing UI
+                 SECTION 0: Main Reference / Telescope Coordinates
                  ========================= -->
             <Border Grid.Row="0"
+                    BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
+                    BorderThickness="1"
+                    Padding="10"
+                    CornerRadius="4"
+                    Margin="0,0,0,10">
+
+                <StackPanel>
+                    <TextBlock Text="Main Reference"
+                               FontSize="16"
+                               FontWeight="SemiBold"
+                               Margin="0,0,0,8"/>
+
+                    <!-- Reference mode selection -->
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,8">
+                        <TextBlock Text="Reference Mode:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+
+                        <RadioButton Content="Use telescope coords (live mount)"
+                                     IsChecked="{Binding UseTelescopeCoordsAsMainRef}"
+                                     Margin="0,0,12,0"/>
+
+                        <RadioButton Content="Use main-scope plate solve (requires Sync + Refresh/Slew)"
+                                     IsChecked="{Binding UseMainScopeSolveAsMainRef}"/>
+                    </StackPanel>
+
+                    <TextBlock Text="{Binding MainReferenceHintText}"
+                               Opacity="0.85"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,10"/>
+
+                    <!-- Ready status -->
+                    <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
+                            BorderThickness="1"
+                            Padding="8"
+                            CornerRadius="4"
+                            Margin="0,0,0,10">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                <TextBlock Text="Main reference status: " />
+                                <TextBlock Text="{Binding MainReferenceReadyText}"
+                                           FontWeight="SemiBold"/>
+                            </StackPanel>
+
+                            <TextBlock Text="{Binding MainReferenceStatusText}"
+                                       TextWrapping="Wrap"
+                                       Opacity="0.85"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Telescope coords display -->
+                    <TextBlock Text="Current telescope coordinates:"
+                               FontWeight="SemiBold"
+                               Margin="0,0,0,4"/>
+
+                    <TextBlock Text="{Binding TelescopeCoordsText}"
+                               FontWeight="SemiBold"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,6"/>
+
+                    <UniformGrid Columns="2" Margin="0,0,0,8">
+                        <TextBlock Text="Last refresh (UTC):"/>
+                        <TextBlock Text="{Binding LastTelescopeRefreshText}" FontWeight="SemiBold"/>
+                    </UniformGrid>
+
+                    <TextBlock Text="{Binding TelescopeCoordsStatusText}"
+                               TextWrapping="Wrap"
+                               Opacity="0.85"
+                               Margin="0,0,0,8"/>
+
+                    <Button Content="Refresh now"
+                            Width="110"
+                            Command="{Binding RefreshTelescopeCoordsCommand}" />
+                </StackPanel>
+            </Border>
+
+            <!-- =========================
+                 SECTION 1: Secondary Camera
+                 ========================= -->
+            <Border Grid.Row="1"
                     BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
                     BorderThickness="1"
                     Padding="10"
@@ -30,7 +109,9 @@
                                Margin="0,0,0,8"/>
 
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                        <TextBlock ><Run Text="Secondary "/><Run Text="Camera"/><Run Language="de-de" Text=" "/><Run Text="Connected: "/></TextBlock>
+                        <TextBlock>
+                            <Run Text="Secondary Camera Connected: "/>
+                        </TextBlock>
                         <TextBlock Text="{Binding IsSecondaryConnected}" FontWeight="SemiBold" />
                     </StackPanel>
 
@@ -43,10 +124,6 @@
                                 Width="90"
                                 Margin="0,0,8,0"
                                 Command="{Binding DisconnectSecondaryCommand}" />
-                        <Button Content="Capture + FITS"
-                                Width="120"
-                                Margin="0,0,8,0"
-                                Command="{Binding CaptureAndSaveFitsCommand}" />
                         <Button Content="Capture + Solve"
                                 Width="120"
                                 Command="{Binding CaptureAndSolveCommand}" />
@@ -55,13 +132,6 @@
                     <TextBlock Text="{Binding StatusText}"
                                FontWeight="SemiBold"
                                Margin="0,4,0,6"/>
-
-                    <TextBlock Text="Last FITS:" Margin="0,4,0,2" />
-                    <TextBox Text="{Binding LastFitsPath}"
-                             Height="26"
-                             IsReadOnly="True"
-                             TextWrapping="NoWrap"
-                             VerticalContentAlignment="Center"/>
 
                     <TextBox Text="{Binding DetailsText}"
                              Margin="0,8,0,0"
@@ -75,7 +145,7 @@
             <!-- =========================
                  SECTION 2: Offset UI
                  ========================= -->
-            <Border Grid.Row="1"
+            <Border Grid.Row="2"
                     BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
                     BorderThickness="1"
                     Padding="10"
@@ -87,23 +157,36 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
                     <TextBlock Grid.Row="0"
                                FontSize="16"
                                FontWeight="SemiBold"
-                               Margin="0,0,0,10"><Run Language="de-de" Text="                      "/><Run Text="Second Scope PlateSolve Offset"/></TextBlock>
+                               Margin="0,0,0,10"
+                               Text="Second Scope PlateSolve Offset"/>
 
                     <!-- Controls -->
                     <StackPanel Grid.Row="1"
                                 Orientation="Horizontal"
-                                Margin="0,0,0,10">
+                                Margin="0,0,0,10"
+                                VerticalAlignment="Center">
                         <CheckBox Content="Offset enabled"
                                   IsChecked="{Binding Settings.OffsetEnabled}"
                                   VerticalAlignment="Center"
                                   Margin="0,0,12,0"/>
 
-                        <Button Content="Calibrate Offset (Main = Telescope, Guide = last solve)"
+                        <TextBlock Text="Mode:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <RadioButton Content="Rotation"
+                                     IsChecked="{Binding IsRotationMode}"
+                                     VerticalAlignment="Center"
+                                     Margin="0,0,10,0"/>
+                        <RadioButton Content="Arcsec"
+                                     IsChecked="{Binding IsArcsecMode}"
+                                     VerticalAlignment="Center"
+                                     Margin="0,0,16,0"/>
+
+                        <Button Content="Calibrate Offset (Main = selected reference, Guide = last solve)"
                                 Command="{Binding CalibrateOffsetCommand}"
                                 Margin="0,0,12,0"/>
 
@@ -119,14 +202,20 @@
                             CornerRadius="4"
                             Margin="0,0,0,10">
                         <StackPanel>
-                            <TextBlock Text="{Binding StatusLine}" Margin="0,0,0,6"/>
+                            <TextBlock Text="{Binding StatusLine}" Margin="0,0,0,6" TextWrapping="Wrap"/>
 
-                            <UniformGrid Columns="2" Rows="3">
-                                <TextBlock Text="Offset RA (arcsec):"/>
+                            <UniformGrid Columns="2" Rows="5">
+                                <TextBlock Text="Offset RA (arcsec) [legacy]:"/>
                                 <TextBlock Text="{Binding Settings.OffsetRaArcsec, StringFormat={}{0:0.###}}"/>
 
-                                <TextBlock Text="Offset Dec (arcsec):"/>
+                                <TextBlock Text="Offset Dec (arcsec) [legacy]:"/>
                                 <TextBlock Text="{Binding Settings.OffsetDecArcsec, StringFormat={}{0:0.###}}"/>
+
+                                <TextBlock Text="Rotation angle (deg):"/>
+                                <TextBlock Text="{Binding RotationAngleDegText}"/>
+
+                                <TextBlock Text="Rotation quaternion (w,x,y,z):"/>
+                                <TextBlock Text="{Binding RotationQuaternionText}" TextWrapping="Wrap"/>
 
                                 <TextBlock Text="Last calibration (UTC):"/>
                                 <TextBlock Text="{Binding LastCalibrationText}"/>
@@ -142,17 +231,23 @@
                             CornerRadius="4">
                         <StackPanel>
                             <TextBlock Text="Last guider solve:" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                            <TextBlock Text="{Binding LastGuiderSolveText}" Margin="0,0,0,10"/>
+                            <TextBlock Text="{Binding LastGuiderSolveText}" Margin="0,0,0,10" TextWrapping="Wrap"/>
 
                             <TextBlock Text="Corrected coordinates (after offset):" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                            <TextBlock Text="{Binding CorrectedSolveText}"/>
+                            <TextBlock Text="{Binding CorrectedSolveText}" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Border>
+
+                    <TextBlock Grid.Row="4"
+                               Margin="0,10,0,0"
+                               Opacity="0.8"
+                               TextWrapping="Wrap"
+                               Text="Tip: If you choose 'main-scope plate solve', run a main plate solve WITH Sync, then click Refresh (or slew) before calibrating."/>
                 </Grid>
             </Border>
 
             <!-- Optional spacer -->
-            <Border Grid.Row="2" Height="8" Opacity="0"/>
+            <Border Grid.Row="3" Height="8" Opacity="0"/>
         </Grid>
     </ScrollViewer>
 </UserControl>
