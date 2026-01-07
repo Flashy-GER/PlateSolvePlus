@@ -7,7 +7,8 @@ namespace NINA.Plugins.PlateSolvePlus.PlateSolving {
             int? downsample,
             int? timeoutSec,
             double? focalLengthMm,
-            double? pixelSizeUm) {
+            double? pixelSizeUm,
+            bool? sync = null) {
             var p = new NINA.PlateSolving.PlateSolveParameter();
 
             // Best-effort: nur setzen, wenn Property existiert (Builds variieren)

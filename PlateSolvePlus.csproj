@@ -38,17 +38,6 @@
   </ItemGroup>
 	<PropertyGroup />
 	<Target Name="PostBuild" AfterTargets="PostBuildEvent">
-		<Exec Command="
-if not exist &quot;%25localappdata%25\NINA\Plugins\3.0.0&quot; (
-  echo Creating Plugins folder
-  mkdir &quot;%25localappdata%25\NINA\Plugins\3.0.0&quot;
-)
-if not exist &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)&quot; (
-  echo Creating Plugin folder: $(TargetName)
-  mkdir &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)&quot;
-)
-
-echo Copying $(TargetFileName) to NINA plugin folder
-xcopy &quot;$(TargetPath)&quot; &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)\&quot; /y /i" />
+		<Exec Command="&#xD;&#xA;if not exist &quot;%25localappdata%25\NINA\Plugins\3.0.0&quot; (&#xD;&#xA;  echo Creating Plugins folder&#xD;&#xA;  mkdir &quot;%25localappdata%25\NINA\Plugins\3.0.0&quot;&#xD;&#xA;)&#xD;&#xA;if not exist &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)&quot; (&#xD;&#xA;  echo Creating Plugin folder: $(TargetName)&#xD;&#xA;  mkdir &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)&quot;&#xD;&#xA;)&#xD;&#xA;&#xD;&#xA;echo Copying $(TargetFileName) to NINA plugin folder&#xD;&#xA;xcopy &quot;$(TargetPath)&quot; &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)\&quot; /y /i" />
 </Target>
 </Project>

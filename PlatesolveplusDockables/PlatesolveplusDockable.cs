@@ -1,78 +1,48 @@
-﻿using NINA.Astrometry;
-using NINA.Core.Model;
-using NINA.Core.Utility;
+﻿using NINA.Core.Utility;
 using NINA.Equipment.Interfaces.Mediator;
-using NINA.Image.ImageData;
-using NINA.Image.Interfaces;
-using NINA.PlateSolving.Interfaces;
-using NINA.Plugins.PlateSolvePlus.PlateSolving;
-using NINA.Plugins.PlateSolvePlus.SecondaryCamera;
+using NINA.Plugins.PlateSolvePlus.Services;
+using NINA.Plugins.PlateSolvePlus.Utils;
 using NINA.Profile.Interfaces;
 using NINA.WPF.Base.ViewModel;
 using System;
+using System.ComponentModel;
 using System.ComponentModel.Composition;
-using System.Linq;
-using System.Reflection;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 
 namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
+
     [Export(typeof(NINA.Equipment.Interfaces.ViewModel.IDockableVM))]
-    public class PlateSolvePlusDockable : DockableVM, NINA.Equipment.Interfaces.ViewModel.IDockableVM {
+    public sealed class PlateSolvePlusDockable : DockableVM,
+        NINA.Equipment.Interfaces.ViewModel.IDockableVM,
+        IDisposable,
+        IPartImportsSatisfiedNotification {
+
         private readonly IProfileService profileService;
+        private readonly IServiceFactory serviceFactory;
 
         [Import(AllowDefault = true)]
         public Platesolveplus? PluginSettings { get; set; }
 
-        [Import(AllowDefault = true)]
-        public IPlateSolverFactory? PlateSolverFactory { get; set; }
+        [Import]
+        private Lazy<IPlateSolvePlusContext> ContextLazy { get; set; } = null!;
+        private IPlateSolvePlusContext Context => ContextLazy.Value;
 
-        [Import(AllowDefault = true)]
-        public IImageDataFactory? ImageDataFactory { get; set; }
+        // Services (via factory)
+        private ITelescopeReferenceService TelescopeReferenceService => serviceFactory.GetTelescopeReferenceService();
+        private IOffsetService OffsetService => serviceFactory.GetOffsetService();
 
-        // MAIN reference source: NINA telescope mediator
-        private ITelescopeMediator? telescopeMediator;
-
+        // Exposed to NINA MEF; forwarded to telescope reference service
         [Import(AllowDefault = true)]
         public ITelescopeMediator? TelescopeMediator {
-            get => telescopeMediator;
-            set {
-                if (ReferenceEquals(telescopeMediator, value)) return;
-
-                if (telescopeMediator != null) {
-                    try { telescopeMediator.Slewed -= TelescopeMediator_Slewed; } catch { }
-                }
-
-                telescopeMediator = value;
-
-                if (telescopeMediator != null) {
-                    try { telescopeMediator.Slewed += TelescopeMediator_Slewed; } catch { }
-                }
-
-                RefreshTelescopeCoords();
-            }
+            get => TelescopeReferenceService.TelescopeMediator;
+            set => TelescopeReferenceService.TelescopeMediator = value;
         }
 
-        private async Task TelescopeMediator_Slewed(object sender, MountSlewedEventArgs e) {
-            try {
-                RefreshTelescopeCoords();
-                await Task.CompletedTask;
-            } catch { }
-        }
-
-        // Secondary camera
-        private ISecondaryCamera? secondaryCamera;
-        private const string ProgId = "ASCOM.Simulator.Camera";
-
-        // Commands
-        public ICommand ConnectSecondaryCommand { get; }
-        public ICommand DisconnectSecondaryCommand { get; }
-        public ICommand CaptureAndSolveCommand { get; }
         public ICommand RefreshTelescopeCoordsCommand { get; }
+        public ICommand CalibrateOffsetCommand { get; }
+        public ICommand ResetOffsetCommand { get; }
 
-        // UI state
         private string statusText = "Idle";
         public string StatusText {
             get => statusText;
@@ -83,12 +53,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         public string DetailsText {
             get => detailsText;
             set { detailsText = value; RaisePropertyChanged(nameof(DetailsText)); }
-        }
-
-        private bool isSecondaryConnected;
-        public bool IsSecondaryConnected {
-            get => isSecondaryConnected;
-            set { isSecondaryConnected = value; RaisePropertyChanged(nameof(IsSecondaryConnected)); }
         }
 
         // Telescope coordinate display
@@ -145,9 +109,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 useTelescopeCoordsAsMainRef = value;
                 if (value) useMainScopeSolveAsMainRef = false;
 
-                // In live-mount mode we can treat reference as ready if telescope mediator is available
                 MainReferenceReady = TelescopeMediator != null;
-
                 UpdateMainReferenceStatusText();
 
                 RaisePropertyChanged(nameof(UseTelescopeCoordsAsMainRef));
@@ -165,12 +127,11 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 useMainScopeSolveAsMainRef = value;
                 if (value) useTelescopeCoordsAsMainRef = false;
 
-                // In main-scope mode we require a fresh refresh/slew AFTER main solve+sync
-                MainReferenceReady = false;
+                // In main-scope mode readiness is handled by TelescopeReferenceService updates
                 UpdateMainReferenceStatusText();
 
-                RaisePropertyChanged(nameof(UseMainScopeSolveAsMainRef));
                 RaisePropertyChanged(nameof(UseTelescopeCoordsAsMainRef));
+                RaisePropertyChanged(nameof(UseMainScopeSolveAsMainRef));
                 RaisePropertyChanged(nameof(MainReferenceHintText));
                 CommandManager.InvalidateRequerySuggested();
             }
@@ -195,11 +156,13 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             }
         }
 
-        // Offset handling (Rotation default)
-        public PlateSolvePlusSettings Settings { get; } = new PlateSolvePlusSettings();
+        // Offset settings (persistent; shared with Options)
+        private PlateSolvePlusSettings FallbackSettings { get; } = new PlateSolvePlusSettings();
 
-        // Mode helper properties for XAML RadioButtons
-        public bool IsRotationMode {
+        public PlateSolvePlusSettings Settings => PluginSettings?.Settings ?? FallbackSettings;
+
+        private bool settingsSubscribed;
+public bool IsRotationMode {
             get => Settings.OffsetMode == OffsetMode.Rotation;
             set {
                 if (!value) return;
@@ -223,10 +186,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             }
         }
 
-        public ICommand CalibrateOffsetCommand { get; }
-        public ICommand ResetOffsetCommand { get; }
-
-        private string statusLine = "Waiting for solve…";
+        private string statusLine = "Offset: waiting for guider solve…";
         public string StatusLine {
             get => statusLine;
             set { statusLine = value; RaisePropertyChanged(nameof(StatusLine)); }
@@ -247,9 +207,10 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         }
 
         public string LastCalibrationText =>
-            Settings.LastOffsetCalibrationUtc?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-";
+           Settings.OffsetLastCalibratedUtc.HasValue
+            ? Settings.OffsetLastCalibratedUtc.Value.ToString("yyyy-MM-dd HH:mm:ss")
+            : "-";
 
-        // Rotation display text
         private string rotationAngleDegText = "-";
         public string RotationAngleDegText {
             get => rotationAngleDegText;
@@ -262,20 +223,19 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             set { rotationQuaternionText = value; RaisePropertyChanged(nameof(RotationQuaternionText)); }
         }
 
+        private bool disposed;
+        private bool importsReady;
+
         [ImportingConstructor]
         public PlateSolvePlusDockable(IProfileService profileService)
             : base(profileService) {
+
             this.profileService = profileService;
+            this.serviceFactory = new ServiceFactory();
 
             Title = "PlateSolvePlus";
             IsVisible = true;
 
-            // Rotation as standard
-            Settings.OffsetMode = OffsetMode.Rotation;
-
-            ConnectSecondaryCommand = new SimpleAsyncCommand(ConnectSecondaryAsync);
-            DisconnectSecondaryCommand = new SimpleAsyncCommand(DisconnectSecondaryAsync);
-            CaptureAndSolveCommand = new SimpleAsyncCommand(CaptureAndSolveAsync);
             RefreshTelescopeCoordsCommand = new RelayCommand(_ => RefreshTelescopeCoords());
 
             CalibrateOffsetCommand = new RelayCommand(_ => CalibrateOffset(), _ => CanCalibrate());
@@ -288,230 +248,139 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 UpdateRotationInfoText();
                 UpdateCorrectedText();
             });
-
-            Settings.PropertyChanged += (_, __) => {
-                RaisePropertyChanged(nameof(LastCalibrationText));
-                RaisePropertyChanged(nameof(IsRotationMode));
-                RaisePropertyChanged(nameof(IsArcsecMode));
-                UpdateRotationInfoText();
-                UpdateCorrectedText();
-            };
-
-            // default selection
-            UseTelescopeCoordsAsMainRef = true;
+            // Defaults
+UseTelescopeCoordsAsMainRef = true;
 
             StatusText = "Ready";
-            DetailsText = "Connect secondary camera to start.";
+            DetailsText = "Main reference + offset calibration.";
             StatusLine = "Offset: waiting for guider solve…";
 
             UpdateRotationInfoText();
+        }
+
+        
+        private void HookPersistentSettings() {
+            if (settingsSubscribed) return;
+            if (PluginSettings?.Settings == null) return;
+            PluginSettings.Settings.PropertyChanged += Settings_PropertyChanged;
+            settingsSubscribed = true;
+        }
+
+        private void UnhookPersistentSettings() {
+            if (!settingsSubscribed) return;
+            if (PluginSettings?.Settings != null) {
+                PluginSettings.Settings.PropertyChanged -= Settings_PropertyChanged;
+            }
+            settingsSubscribed = false;
+        }
+
+        private void Settings_PropertyChanged(object sender, PropertyChangedEventArgs e) {
+            RaisePropertyChanged(nameof(LastCalibrationText));
+            RaisePropertyChanged(nameof(IsRotationMode));
+            RaisePropertyChanged(nameof(IsArcsecMode));
+            UpdateRotationInfoText();
+            UpdateCorrectedText();
+        }
+
+public void OnImportsSatisfied() {
+            importsReady = true;
+            Logger.Debug(
+    $"[CameraDockable] OnImportsSatisfied | " +
+    $"TRS instance={TelescopeReferenceService?.GetHashCode()} | " +
+    $"Mediator={TelescopeReferenceService?.TelescopeMediator?.GetHashCode()} | " +
+    $"Dockable this={this.GetHashCode()}"
+);
+
+
+            HookPersistentSettings();
+TelescopeReferenceService.ReferenceUpdated += TelescopeReferenceService_ReferenceUpdated;
+            Context.LastGuiderSolveUpdated += Context_LastGuiderSolveUpdated;
+
+            // If we already have a solve snapshot (e.g. camera dockable solved first), consume it
+            ConsumeContextSolveSnapshot();
+
             RefreshTelescopeCoords();
         }
 
-        // ============================
-        // Secondary camera connect/disconnect
-        // ============================
-        private async Task ConnectSecondaryAsync() {
-            try {
-                StatusText = "Connecting secondary camera...";
-                DetailsText = $"ProgID: {ProgId}";
+        public void Dispose() {
+            if (disposed) return;
+            disposed = true;
 
-                secondaryCamera?.Dispose();
-                secondaryCamera = new AscomComSecondaryCamera(ProgId);
+            
+            UnhookPersistentSettings();
+try { TelescopeReferenceService.ReferenceUpdated -= TelescopeReferenceService_ReferenceUpdated; } catch { }
+            try { Context.LastGuiderSolveUpdated -= Context_LastGuiderSolveUpdated; } catch { }
 
-                await secondaryCamera.ConnectAsync(CancellationToken.None);
-                IsSecondaryConnected = secondaryCamera.IsConnected;
-
-                StatusText = IsSecondaryConnected
-                    ? "Secondary camera connected ✅"
-                    : "Secondary camera not connected ❌";
-            } catch (Exception ex) {
-                StatusText = "Connect failed ❌";
-                DetailsText = ex.ToString();
-                IsSecondaryConnected = false;
-            }
+            try { serviceFactory.Dispose(); } catch { }
         }
 
-        private async Task DisconnectSecondaryAsync() {
-            try {
-                StatusText = "Disconnecting secondary camera...";
-                if (secondaryCamera != null)
-                    await secondaryCamera.DisconnectAsync(CancellationToken.None);
-
-                secondaryCamera?.Dispose();
-                secondaryCamera = null;
-
-                IsSecondaryConnected = false;
-                StatusText = "Disconnected ✅";
-            } catch (Exception ex) {
-                StatusText = "Disconnect failed ❌";
-                DetailsText = ex.ToString();
-            }
-        }
-
-        // ============================
-        // Telescope refresh (Slew + manual)
-        // ============================
-        private void RefreshTelescopeCoords() {
+        private void Context_LastGuiderSolveUpdated(object? sender, EventArgs e) {
             var dispatcher = Application.Current?.Dispatcher;
             if (dispatcher != null && !dispatcher.CheckAccess()) {
-                dispatcher.Invoke(RefreshTelescopeCoords);
+                dispatcher.Invoke(() => Context_LastGuiderSolveUpdated(sender, e));
+                return;
+            }
+
+            ConsumeContextSolveSnapshot();
+        }
+
+        private void ConsumeContextSolveSnapshot() {
+            var snap = Context.LastGuiderSolve;
+            if (snap == null) return;
+
+            OnGuiderSolveSuccess(snap.RaDeg, snap.DecDeg);
+        }
+
+        private void TelescopeReferenceService_ReferenceUpdated(object? sender, TelescopeReferenceUpdatedEventArgs e) {
+            var dispatcher = Application.Current?.Dispatcher;
+            if (dispatcher != null && !dispatcher.CheckAccess()) {
+                dispatcher.Invoke(() => TelescopeReferenceService_ReferenceUpdated(sender, e));
                 return;
             }
 
             lastTelescopeRefreshUtc = DateTime.UtcNow;
             RaisePropertyChanged(nameof(LastTelescopeRefreshText));
 
-            if (TelescopeMediator == null) {
+            TelescopeCoordsStatusText = $"{e.StatusText}  |  UTC: {LastTelescopeRefreshText}";
+
+            if (!e.Success || !e.RaDeg.HasValue || !e.DecDeg.HasValue) {
                 TelescopeCoordsText = "n/a";
-                TelescopeCoordsStatusText = "ITelescopeMediator not available.";
-
-                // readiness depends on mode
-                MainReferenceReady = UseTelescopeCoordsAsMainRef ? false : false;
-                UpdateMainReferenceStatusText();
-                return;
-            }
-
-            if (!TryGetMainReferenceFromTelescope(out var raDeg, out var decDeg)) {
-                TelescopeCoordsText = "n/a";
-                TelescopeCoordsStatusText = "Could not read telescope coordinates.";
-
                 MainReferenceReady = false;
                 UpdateMainReferenceStatusText();
                 return;
             }
 
+            var raDeg = e.RaDeg.Value;
+            var decDeg = e.DecDeg.Value;
+
             TelescopeCoordsText =
-                $"RA: {FormatRaHms(raDeg)}  |  Dec: {FormatDecDms(decDeg)} (deg: {raDeg:0.######}, {decDeg:0.######})";
+                $"RA: {AstroFormat.FormatRaHms(raDeg)}  |  Dec: {AstroFormat.FormatDecDms(decDeg)} (deg: {raDeg:0.######}, {decDeg:0.######})";
 
-            TelescopeCoordsStatusText =
-                $"Updated via Slew/Refresh  |  UTC: {LastTelescopeRefreshText}";
-
-            // Ready logic:
-            // - live mount mode: ready whenever we can read mount coords
-            // - main-scope mode: ready only after an explicit Refresh/Slew while main-scope mode is selected
-            if (UseTelescopeCoordsAsMainRef) {
-                MainReferenceReady = true;
-            } else {
-                MainReferenceReady = true;
-            }
-
+            MainReferenceReady = true;
             UpdateMainReferenceStatusText();
         }
 
-        private bool TryGetMainReferenceFromTelescope(out double raDeg, out double decDeg) {
-            raDeg = 0;
-            decDeg = 0;
-
-            try {
-                var coords = TelescopeMediator!.GetCurrentPosition();
-                if (coords == null) return false;
-
-                if (TryReadNumber(coords, new[] { "RightAscension", "RA" }, out var raVal) &&
-                    TryReadNumber(coords, new[] { "Declination", "Dec" }, out var decVal)) {
-                    raDeg = GuessRaToDegrees(raVal);
-                    decDeg = decVal;
-                    return true;
-                }
-
-                return false;
-            } catch {
-                return false;
+        private void RefreshTelescopeCoords() {
+            if (TelescopeReferenceService.TryGetCurrentRaDec(out var raDeg, out var decDeg)) {
+                TelescopeReferenceService_ReferenceUpdated(this,
+                    new TelescopeReferenceUpdatedEventArgs(true, "Updated via manual Refresh.", raDeg, decDeg));
+            } else {
+                TelescopeReferenceService_ReferenceUpdated(this,
+                    new TelescopeReferenceUpdatedEventArgs(false,
+                        TelescopeMediator == null ? "ITelescopeMediator not available." : "Could not read telescope coordinates.",
+                        null, null));
             }
         }
 
         // ============================
-        // Capture + Solve
+        // Offset logic
         // ============================
-        private async Task CaptureAndSolveAsync() {
-            if (secondaryCamera == null || !secondaryCamera.IsConnected) {
-                StatusText = "Secondary camera not connected ❌";
-                DetailsText = "Click Connect first.";
-                return;
-            }
 
-            try {
-                var imgFactory = ImageDataFactory ?? TryResolve<IImageDataFactory>();
-                var psFactory = PlateSolverFactory ?? TryResolve<IPlateSolverFactory>();
-
-                if (imgFactory == null || psFactory == null) {
-                    StatusText = "Missing NINA factories ❌";
-                    DetailsText = $"ImageDataFactory={imgFactory != null}, PlateSolverFactory={psFactory != null}";
-                    return;
-                }
-
-                StatusText = "Capturing frame…";
-                DetailsText = "";
-
-                var frame = await secondaryCamera.CaptureAsync(
-                    exposureSeconds: 2.0,
-                    binX: 1,
-                    binY: 1,
-                    gain: null,
-                    ct: CancellationToken.None);
-
-                StatusText = "Building IImageData…";
-
-                ushort[] packed = ConvertToUShortRowMajor(frame.Pixels, frame.Width, frame.Height);
-                var imageData = imgFactory.CreateBaseImageData(
-                    input: packed,
-                    width: frame.Width,
-                    height: frame.Height,
-                    bitDepth: frame.BitDepth,
-                    isBayered: false,
-                    metaData: new ImageMetaData());
-
-                var psSettings = profileService.ActiveProfile.PlateSolveSettings;
-
-                double searchRadiusDeg = ReadDouble(psSettings, "SearchRadius", "SearchRadiusDeg", "Radius", "RadiusDeg") ?? 5.0;
-                int downsample = ReadInt(psSettings, "Downsample", "DownSample", "DownSampling", "DownSamplingFactor") ?? 2;
-                int timeoutSec = ReadInt(psSettings, "Timeout", "TimeoutSeconds", "SolveTimeout", "SolveTimeoutSeconds") ?? 60;
-
-                double focalLengthMm = PluginSettings?.GuideFocalLengthMm ?? 240.0;
-                double pixelSizeUm = PluginSettings?.GuidePixelSizeUm ?? 3.75;
-
-                var parameter = NinaPlateSolveParameterFactory.Create(
-                    searchRadiusDeg: searchRadiusDeg,
-                    downsample: downsample,
-                    timeoutSec: timeoutSec,
-                    focalLengthMm: focalLengthMm,
-                    pixelSizeUm: pixelSizeUm
-                );
-
-                var solver = psFactory.GetPlateSolver(psSettings);
-
-                StatusText = "Solving…";
-                var result = await solver.SolveAsync(imageData, parameter, null, CancellationToken.None);
-
-                StatusText = "Solve finished ✅";
-                DetailsText =
-                    $"Frame: {frame.Width}x{frame.Height}, bitDepth={frame.BitDepth}\n" +
-                    $"SearchRadius={searchRadiusDeg}°, Downsample={downsample}, Timeout={timeoutSec}s\n" +
-                    $"FocalLength={focalLengthMm}mm, PixelSize={pixelSizeUm}µm\n\n" +
-                    DumpObject(result);
-
-                if (TryExtractRaDecDeg(result, out var raDeg, out var decDeg)) {
-                    OnGuiderSolveSuccess(raDeg, decDeg);
-                } else {
-                    StatusLine = "Solve finished, but RA/Dec could not be extracted for offset.";
-                }
-
-                RefreshTelescopeCoords();
-            } catch (Exception ex) {
-                StatusText = "Capture / Solve failed ❌";
-                DetailsText = ex.ToString();
-                StatusLine = "Offset: solve failed (no update).";
-            }
-        }
-
-        // ============================
-        // Offset logic (Rotation default)
-        // ============================
         public void OnGuiderSolveSuccess(double raDeg, double decDeg) {
             lastGuiderSolveDeg = (raDeg, decDeg);
 
             LastGuiderSolveText =
-                $"RA: {FormatRaHms(raDeg)}  |  Dec: {FormatDecDms(decDeg)}  (deg: {raDeg:0.######}, {decDeg:0.######})";
+                $"RA: {AstroFormat.FormatRaHms(raDeg)}  |  Dec: {AstroFormat.FormatDecDms(decDeg)}  (deg: {raDeg:0.######}, {decDeg:0.######})";
 
             StatusLine = Settings.OffsetEnabled
                 ? $"Guider solve received. Offset enabled. Mode={Settings.OffsetMode}"
@@ -522,6 +391,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         }
 
         private bool CanCalibrate() {
+            if (!importsReady) return false;
             if (!lastGuiderSolveDeg.HasValue) return false;
 
             if (UseMainScopeSolveAsMainRef)
@@ -546,33 +416,18 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 return;
             }
 
-            if (!TryGetMainReferenceFromTelescope(out var mainRa, out var mainDec)) {
+            if (!TelescopeReferenceService.TryGetCurrentRaDec(out var mainRa, out var mainDec)) {
                 StatusLine = "Could not read telescope coordinates (main reference).";
                 return;
             }
 
             var (guideRa, guideDec) = lastGuiderSolveDeg.Value;
 
-            // Rotation (STANDARD)
-            var (qw, qx, qy, qz) = OffsetMath.ComputeRotationQuaternion(
-                mainRa, mainDec,
-                guideRa, guideDec);
-
-            Settings.RotationQw = qw;
-            Settings.RotationQx = qx;
-            Settings.RotationQy = qy;
-            Settings.RotationQz = qz;
-
-            // Legacy arcsec for comparison/debug
-            var (dRaArcsec, dDecArcsec) = OffsetMath.ComputeOffsetArcsec(mainRa, mainDec, guideRa, guideDec);
-            Settings.OffsetRaArcsec = dRaArcsec;
-            Settings.OffsetDecArcsec = dDecArcsec;
-
-            Settings.LastOffsetCalibrationUtc = DateTime.UtcNow;
+            var res = OffsetService.Calibrate(Settings, mainRa, mainDec, guideRa, guideDec);
 
             StatusLine =
-                $"Offset calibrated (Rotation). Angle={ComputeRotationAngleDeg(qw):0.####}°  " +
-                $"Legacy ΔRA={dRaArcsec:0.###}\", ΔDec={dDecArcsec:0.###}\"";
+                $"Offset calibrated (Rotation). Angle={res.RotationAngleDeg:0.####}°  " +
+                $"Legacy ΔRA={res.DeltaRaArcsec:0.###}\", ΔDec={res.DeltaDecArcsec:0.###}\"";
 
             RaisePropertyChanged(nameof(LastCalibrationText));
             UpdateRotationInfoText();
@@ -585,207 +440,23 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 return;
             }
 
+            var (ra, dec) = lastGuiderSolveDeg.Value;
+
             if (!Settings.OffsetEnabled) {
                 CorrectedSolveText = "Offset disabled → using guider solve as-is.";
                 return;
             }
 
-            var (ra, dec) = lastGuiderSolveDeg.Value;
+            var (raC, decC) = OffsetService.ApplyToGuiderSolve(Settings, ra, dec);
+            var modeText = Settings.OffsetMode == OffsetMode.Rotation ? "Rotation" : "Arcsec";
 
-            if (Settings.OffsetMode == OffsetMode.Rotation) {
-                var (raC, decC) = OffsetMath.ApplyRotationQuaternion(
-                    ra, dec,
-                    Settings.RotationQw, Settings.RotationQx, Settings.RotationQy, Settings.RotationQz);
-
-                CorrectedSolveText =
-                    $"[Rotation] RA: {FormatRaHms(raC)}  |  Dec: {FormatDecDms(decC)}  (deg: {raC:0.######}, {decC:0.######})";
-            } else {
-                var (raC, decC) = OffsetMath.ApplyOffsetArcsec(
-                    ra, dec,
-                    Settings.OffsetRaArcsec, Settings.OffsetDecArcsec);
-
-                CorrectedSolveText =
-                    $"[Arcsec] RA: {FormatRaHms(raC)}  |  Dec: {FormatDecDms(decC)}  (deg: {raC:0.######}, {decC:0.######})";
-            }
+            CorrectedSolveText =
+                $"[{modeText}] RA: {AstroFormat.FormatRaHms(raC)}  |  Dec: {AstroFormat.FormatDecDms(decC)}  (deg: {raC:0.######}, {decC:0.######})";
         }
 
         private void UpdateRotationInfoText() {
-            RotationQuaternionText =
-                $"({Settings.RotationQw:0.######}, {Settings.RotationQx:0.######}, {Settings.RotationQy:0.######}, {Settings.RotationQz:0.######})";
-
-            RotationAngleDegText =
-                $"{ComputeRotationAngleDeg(Settings.RotationQw):0.####}";
-        }
-
-        private static double ComputeRotationAngleDeg(double qw) {
-            double c = qw;
-            if (c < -1) c = -1;
-            if (c > 1) c = 1;
-            double angleRad = 2.0 * Math.Acos(c);
-            return angleRad * (180.0 / Math.PI);
-        }
-
-        // ============================
-        // Helper methods
-        // ============================
-        private static T? TryResolve<T>() where T : class {
-            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies()) {
-                Type[] types;
-                try { types = asm.GetTypes(); } catch { continue; }
-
-                foreach (var t in types) {
-                    if (t.IsAbstract || t.IsInterface) continue;
-                    if (!typeof(T).IsAssignableFrom(t)) continue;
-                    if (t.GetConstructor(Type.EmptyTypes) == null) continue;
-
-                    try {
-                        if (Activator.CreateInstance(t) is T ok)
-                            return ok;
-                    } catch { }
-                }
-            }
-            return null;
-        }
-
-        private static ushort[] ConvertToUShortRowMajor(int[,] pixels, int width, int height) {
-            var arr = new ushort[width * height];
-            int idx = 0;
-
-            for (int y = 0; y < height; y++)
-                for (int x = 0; x < width; x++) {
-                    int v = pixels[y, x];
-                    if (v < 0) v = 0;
-                    if (v > 65535) v = 65535;
-                    arr[idx++] = (ushort)v;
-                }
-
-            return arr;
-        }
-
-        private static bool TryReadNumber(object src, string[] names, out double value) {
-            value = 0;
-            foreach (var n in names) {
-                var p = src.GetType().GetProperty(n, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.IgnoreCase);
-                if (p == null) continue;
-                var v = p.GetValue(src);
-                if (v == null) continue;
-
-                if (v is double d) { value = d; return true; }
-                if (v is float f) { value = f; return true; }
-                if (v is int i) { value = i; return true; }
-                if (double.TryParse(v.ToString(), out var parsed)) { value = parsed; return true; }
-            }
-            return false;
-        }
-
-        private static double? ReadDouble(object obj, params string[] names) {
-            foreach (var n in names) {
-                var p = obj.GetType().GetProperty(n, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
-                if (p == null) continue;
-                var v = p.GetValue(obj);
-                if (v == null) continue;
-                if (double.TryParse(v.ToString(), out var d)) return d;
-            }
-            return null;
-        }
-
-        private static int? ReadInt(object obj, params string[] names) {
-            foreach (var n in names) {
-                var p = obj.GetType().GetProperty(n, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
-                if (p == null) continue;
-                var v = p.GetValue(obj);
-                if (v == null) continue;
-                if (int.TryParse(v.ToString(), out var i)) return i;
-            }
-            return null;
-        }
-
-        private static bool TryExtractRaDecDeg(object result, out double raDeg, out double decDeg) {
-            raDeg = 0;
-            decDeg = 0;
-            if (result == null) return false;
-
-            if (TryReadNumber(result, new[] { "RightAscension", "RA" }, out var raVal) &&
-                TryReadNumber(result, new[] { "Declination", "Dec" }, out var decVal)) {
-                raDeg = GuessRaToDegrees(raVal);
-                decDeg = decVal;
-                return true;
-            }
-
-            var coordsProp = result.GetType().GetProperty("Coordinates", BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
-            var coords = coordsProp?.GetValue(result);
-            if (coords != null) {
-                if (TryReadNumber(coords, new[] { "RightAscension", "RA" }, out raVal) &&
-                    TryReadNumber(coords, new[] { "Declination", "Dec" }, out decVal)) {
-                    raDeg = GuessRaToDegrees(raVal);
-                    decDeg = decVal;
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        private static string DumpObject(object obj) {
-            if (obj == null) return "<null>";
-            var props = obj.GetType()
-                .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                .Where(p => p.CanRead)
-                .OrderBy(p => p.Name);
-
-            return string.Join("\n", props.Select(p => {
-                object? v = null;
-                try { v = p.GetValue(obj); } catch { }
-                return $"{p.Name} = {v}";
-            }));
-        }
-
-        private static double GuessRaToDegrees(double ra) => (ra >= 0 && ra <= 24.0) ? ra * 15.0 : ra;
-
-        private static string FormatRaHms(double raDeg) {
-            var raHours = raDeg / 15.0;
-            if (raHours < 0) raHours += 24.0;
-            raHours %= 24.0;
-
-            var h = (int)Math.Floor(raHours);
-            var mFloat = (raHours - h) * 60.0;
-            var m = (int)Math.Floor(mFloat);
-            var s = (mFloat - m) * 60.0;
-
-            return $"{h:00}:{m:00}:{s:00.##}";
-        }
-
-        private static string FormatDecDms(double decDeg) {
-            var sign = decDeg < 0 ? "-" : "+";
-            var a = Math.Abs(decDeg);
-            var d = (int)Math.Floor(a);
-            var mFloat = (a - d) * 60.0;
-            var m = (int)Math.Floor(mFloat);
-            var s = (mFloat - m) * 60.0;
-
-            return $"{sign}{d:00}° {m:00}' {s:00.##}\"";
-        }
-    }
-
-    public sealed class SimpleAsyncCommand : ICommand {
-        private readonly Func<Task> execute;
-        private bool isExecuting;
-
-        public SimpleAsyncCommand(Func<Task> execute) => this.execute = execute;
-
-        public bool CanExecute(object parameter) => !isExecuting;
-        public event EventHandler? CanExecuteChanged;
-
-        public async void Execute(object parameter) {
-            if (isExecuting) return;
-            try {
-                isExecuting = true;
-                CanExecuteChanged?.Invoke(this, EventArgs.Empty);
-                await execute();
-            } finally {
-                isExecuting = false;
-                CanExecuteChanged?.Invoke(this, EventArgs.Empty);
-            }
+            RotationQuaternionText = OffsetService.GetQuaternionText(Settings);
+            RotationAngleDegText = OffsetService.GetRotationAngleText(Settings);
         }
     }
 }

@@ -3,10 +3,11 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             mc:Ignorable="d">
+             mc:Ignorable="d"
+             d:DesignHeight="700" d:DesignWidth="520">
 
     <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <Grid Margin="8">
+        <Grid Margin="10">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
@@ -14,160 +15,71 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <!-- =========================
-                 SECTION 0: Main Reference / Telescope Coordinates
-                 ========================= -->
             <Border Grid.Row="0"
                     BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
                     BorderThickness="1"
                     Padding="10"
                     CornerRadius="4"
                     Margin="0,0,0,10">
-
-                <StackPanel>
-                    <TextBlock Text="Main Reference"
-                               FontSize="16"
-                               FontWeight="SemiBold"
-                               Margin="0,0,0,8"/>
-
-                    <!-- Reference mode selection -->
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,8">
-                        <TextBlock Text="Reference Mode:" VerticalAlignment="Center" Margin="0,0,10,0"/>
-
-                        <RadioButton Content="Use telescope coords (live mount)"
-                                     IsChecked="{Binding UseTelescopeCoordsAsMainRef}"
-                                     Margin="0,0,12,0"/>
-
-                        <RadioButton Content="Use main-scope plate solve (requires Sync + Refresh/Slew)"
-                                     IsChecked="{Binding UseMainScopeSolveAsMainRef}"/>
-                    </StackPanel>
-
-                    <TextBlock Text="{Binding MainReferenceHintText}"
-                               Opacity="0.85"
-                               TextWrapping="Wrap"
-                               Margin="0,0,0,10"/>
-
-                    <!-- Ready status -->
-                    <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
-                            BorderThickness="1"
-                            Padding="8"
-                            CornerRadius="4"
-                            Margin="0,0,0,10">
-                        <StackPanel>
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                <TextBlock Text="Main reference status: " />
-                                <TextBlock Text="{Binding MainReferenceReadyText}"
-                                           FontWeight="SemiBold"/>
-                            </StackPanel>
-
-                            <TextBlock Text="{Binding MainReferenceStatusText}"
-                                       TextWrapping="Wrap"
-                                       Opacity="0.85"/>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- Telescope coords display -->
-                    <TextBlock Text="Current telescope coordinates:"
-                               FontWeight="SemiBold"
-                               Margin="0,0,0,4"/>
-
-                    <TextBlock Text="{Binding TelescopeCoordsText}"
-                               FontWeight="SemiBold"
-                               TextWrapping="Wrap"
-                               Margin="0,0,0,6"/>
-
-                    <UniformGrid Columns="2" Margin="0,0,0,8">
-                        <TextBlock Text="Last refresh (UTC):"/>
-                        <TextBlock Text="{Binding LastTelescopeRefreshText}" FontWeight="SemiBold"/>
-                    </UniformGrid>
-
-                    <TextBlock Text="{Binding TelescopeCoordsStatusText}"
-                               TextWrapping="Wrap"
-                               Opacity="0.85"
-                               Margin="0,0,0,8"/>
-
-                    <Button Content="Refresh now"
-                            Width="110"
-                            Command="{Binding RefreshTelescopeCoordsCommand}" />
-                </StackPanel>
-            </Border>
-
-            <!-- =========================
-                 SECTION 1: Secondary Camera
-                 ========================= -->
-            <Border Grid.Row="1"
-                    BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
-                    BorderThickness="1"
-                    Padding="10"
-                    CornerRadius="4"
-                    Margin="0,0,0,10">
-
-                <StackPanel>
-                    <TextBlock Text="PlateSolvePlus"
-                               FontSize="16"
-                               FontWeight="SemiBold"
-                               Margin="0,0,0,8"/>
-
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                        <TextBlock>
-                            <Run Text="Secondary Camera Connected: "/>
-                        </TextBlock>
-                        <TextBlock Text="{Binding IsSecondaryConnected}" FontWeight="SemiBold" />
-                    </StackPanel>
-
-                    <WrapPanel Margin="0,0,0,8">
-                        <Button Content="Connect"
-                                Width="90"
-                                Margin="0,0,8,0"
-                                Command="{Binding ConnectSecondaryCommand}" />
-                        <Button Content="Disconnect"
-                                Width="90"
-                                Margin="0,0,8,0"
-                                Command="{Binding DisconnectSecondaryCommand}" />
-                        <Button Content="Capture + Solve"
-                                Width="120"
-                                Command="{Binding CaptureAndSolveCommand}" />
-                    </WrapPanel>
-
-                    <TextBlock Text="{Binding StatusText}"
-                               FontWeight="SemiBold"
-                               Margin="0,4,0,6"/>
-
-                    <TextBox Text="{Binding DetailsText}"
-                             Margin="0,8,0,0"
-                             Height="190"
-                             IsReadOnly="True"
-                             TextWrapping="Wrap"
-                             VerticalScrollBarVisibility="Auto"/>
-                </StackPanel>
-            </Border>
-
-            <!-- =========================
-                 SECTION 2: Offset UI
-                 ========================= -->
-            <Border Grid.Row="2"
-                    BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
-                    BorderThickness="1"
-                    Padding="10"
-                    CornerRadius="4">
-
                 <Grid>
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>  <!-- Header -->
+                        <RowDefinition Height="Auto"/>  <!-- Main reference -->
+                        <RowDefinition Height="Auto"/>  <!-- Telescope coords -->
+                        <RowDefinition Height="Auto"/>  <!-- Offset controls -->
+                        <RowDefinition Height="Auto"/>  <!-- Status -->
+                        <RowDefinition Height="Auto"/>  <!-- Solve output -->
+                        <RowDefinition Height="Auto"/>  <!-- Tip -->
                     </Grid.RowDefinitions>
 
+                    <!-- Header -->
                     <TextBlock Grid.Row="0"
                                FontSize="16"
                                FontWeight="SemiBold"
                                Margin="0,0,0,10"
                                Text="Second Scope PlateSolve Offset"/>
 
-                    <!-- Controls -->
-                    <StackPanel Grid.Row="1"
+                    <!-- Main reference selection -->
+                    <Border Grid.Row="1"
+                            BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
+                            BorderThickness="1"
+                            Padding="10"
+                            CornerRadius="4"
+                            Margin="0,0,0,10">
+                        <StackPanel>
+                            <TextBlock Text="Main reference" FontWeight="SemiBold" Margin="0,0,0,6"/>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                <RadioButton Content="Use telescope coords (live)"
+                                             IsChecked="{Binding UseTelescopeCoordsAsMainRef}"
+                                             Margin="0,0,14,0"/>
+                                <RadioButton Content="Use main-scope solve+sync (refresh)"
+                                             IsChecked="{Binding UseMainScopeSolveAsMainRef}"/>
+                            </StackPanel>
+
+                            <TextBlock Text="{Binding MainReferenceHintText}"
+                                       Opacity="0.85"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,6"/>
+
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="Status:" FontWeight="SemiBold" Margin="0,0,6,0"/>
+                                <TextBlock Text="{Binding MainReferenceReadyText}" Margin="0,0,10,0"/>
+                                <Button Content="Refresh"
+                                        Command="{Binding RefreshTelescopeCoordsCommand}"
+                                        Margin="0,0,10,0"/>
+                                <TextBlock Text="{Binding TelescopeCoordsText}" Opacity="0.9" TextWrapping="Wrap"/>
+                            </StackPanel>
+
+                            <TextBlock Text="{Binding MainReferenceStatusText}"
+                                       Opacity="0.8"
+                                       TextWrapping="Wrap"
+                                       Margin="0,6,0,0"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Offset controls -->
+                    <StackPanel Grid.Row="3"
                                 Orientation="Horizontal"
                                 Margin="0,0,0,10"
                                 VerticalAlignment="Center">
@@ -176,26 +88,17 @@
                                   VerticalAlignment="Center"
                                   Margin="0,0,12,0"/>
 
-                        <TextBlock Text="Mode:" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                        <RadioButton Content="Rotation"
-                                     IsChecked="{Binding IsRotationMode}"
-                                     VerticalAlignment="Center"
-                                     Margin="0,0,10,0"/>
-                        <RadioButton Content="Arcsec"
-                                     IsChecked="{Binding IsArcsecMode}"
-                                     VerticalAlignment="Center"
-                                     Margin="0,0,16,0"/>
-
-                        <Button Content="Calibrate Offset (Main = selected reference, Guide = last solve)"
-                                Command="{Binding CalibrateOffsetCommand}"
-                                Margin="0,0,12,0"/>
+                        <TextBlock Text="Mode: Rotation (fixed)"
+                                   VerticalAlignment="Center"
+                                   Opacity="0.85"
+                                   Margin="0,0,16,0"/>
 
                         <Button Content="Reset Offset"
                                 Command="{Binding ResetOffsetCommand}"/>
                     </StackPanel>
 
                     <!-- Status -->
-                    <Border Grid.Row="2"
+                    <Border Grid.Row="4"
                             BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
                             BorderThickness="1"
                             Padding="10"
@@ -204,13 +107,7 @@
                         <StackPanel>
                             <TextBlock Text="{Binding StatusLine}" Margin="0,0,0,6" TextWrapping="Wrap"/>
 
-                            <UniformGrid Columns="2" Rows="5">
-                                <TextBlock Text="Offset RA (arcsec) [legacy]:"/>
-                                <TextBlock Text="{Binding Settings.OffsetRaArcsec, StringFormat={}{0:0.###}}"/>
-
-                                <TextBlock Text="Offset Dec (arcsec) [legacy]:"/>
-                                <TextBlock Text="{Binding Settings.OffsetDecArcsec, StringFormat={}{0:0.###}}"/>
-
+                            <UniformGrid Columns="2" Rows="3">
                                 <TextBlock Text="Rotation angle (deg):"/>
                                 <TextBlock Text="{Binding RotationAngleDegText}"/>
 
@@ -224,7 +121,7 @@
                     </Border>
 
                     <!-- Solve output -->
-                    <Border Grid.Row="3"
+                    <Border Grid.Row="5"
                             BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
                             BorderThickness="1"
                             Padding="10"
@@ -238,16 +135,17 @@
                         </StackPanel>
                     </Border>
 
-                    <TextBlock Grid.Row="4"
+                    <!-- Tip -->
+                    <TextBlock Grid.Row="6"
                                Margin="0,10,0,0"
                                Opacity="0.8"
                                TextWrapping="Wrap"
-                               Text="Tip: If you choose 'main-scope plate solve', run a main plate solve WITH Sync, then click Refresh (or slew) before calibrating."/>
+                               Text="Tip: In main-scope mode, run a MAIN plate solve WITH Sync, then click Refresh (or slew) to capture the main reference."/>
                 </Grid>
             </Border>
 
             <!-- Optional spacer -->
-            <Border Grid.Row="3" Height="8" Opacity="0"/>
+            <Border Grid.Row="1" Height="8" Opacity="0"/>
         </Grid>
     </ScrollViewer>
 </UserControl>

@@ -6,18 +6,30 @@
 
     <!--
       WICHTIG: Der Key muss exakt dem Typ entsprechen, der als Text im Dockable angezeigt wird + "_Dockable".
-      Da du aktuell den Typnamen siehst, aber noch nicht sicher ist ob es Dockable oder DockableVM ist,
-      registrieren wir einfach BEIDE Keys auf dieselbe View. Das ist der schnellste "ich will's JETZT sehen"-Fix.
+      Da je nach NINA-Version/Binding der Typname Dockable oder DockableVM sein kann,
+      registrieren wir (wie schon gemacht) beide Keys.
     -->
 
-    <!-- Falls DataContext = ...PlateSolvePlusDockable -->
+    <!-- =========================
+         Main Dockable
+         ========================= -->
     <DataTemplate x:Key="NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables.PlateSolvePlusDockable_Dockable">
         <local:PlateSolvePlusDockableView />
     </DataTemplate>
 
-    <!-- Falls DataContext = ...PlateSolvePlusDockableVM -->
     <DataTemplate x:Key="NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables.PlateSolvePlusDockableVM_Dockable">
         <local:PlateSolvePlusDockableView />
+    </DataTemplate>
+
+    <!-- =========================
+         NEW: Camera Dockable
+         ========================= -->
+    <DataTemplate x:Key="NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables.CameraDockable_Dockable">
+        <local:CameraDockableView />
+    </DataTemplate>
+
+    <DataTemplate x:Key="NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables.CameraDockableVM_Dockable">
+        <local:CameraDockableView />
     </DataTemplate>
 
     <!-- Icon (optional) -->
