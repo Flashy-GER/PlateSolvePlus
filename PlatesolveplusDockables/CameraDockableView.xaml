@@ -3,85 +3,141 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             mc:Ignorable="d">
+             mc:Ignorable="d"
+             d:DesignHeight="900"
+             d:DesignWidth="520">
 
     <Grid Margin="10">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>  <!-- Header / Status -->
+            <RowDefinition Height="Auto"/>  <!-- Camera selection / buttons -->
+            <RowDefinition Height="Auto"/>  <!-- Solve texts -->
+            <RowDefinition Height="Auto"/>  <!-- Readonly settings -->
+            <RowDefinition Height="*"/>     <!-- Image preview -->
         </Grid.RowDefinitions>
 
-        <!-- Status -->
-        <StackPanel Grid.Row="0" Margin="0,0,0,10">
-            <TextBlock Text="{Binding StatusText}" FontWeight="SemiBold" FontSize="14"/>
-            <TextBlock Text="{Binding DetailsText}" TextWrapping="Wrap" Margin="0,4,0,0"/>
-        </StackPanel>
+        <!-- =========================
+             Header / Status
+             ========================= -->
+        <Border Grid.Row="0"
+                Padding="10"
+                CornerRadius="6"
+                BorderThickness="1"
+                BorderBrush="#22000000"
+                Background="#0A000000"
+                Margin="0,0,0,10">
+            <StackPanel>
+                <TextBlock Text="{Binding StatusText}"
+                           FontWeight="SemiBold"
+                           FontSize="14"/>
+                <TextBlock Text="{Binding DetailsText}"
+                           TextWrapping="Wrap"
+                           Margin="0,4,0,0"/>
+            </StackPanel>
+        </Border>
 
-        <!-- Camera Selection + Connection -->
-        <GroupBox Header="Secondary Camera" Grid.Row="1" Margin="0,0,0,10">
+        <!-- =========================
+             Secondary Camera + Buttons
+             ========================= -->
+        <GroupBox Grid.Row="1" Header="Secondary Camera" Margin="0,0,0,10">
             <StackPanel Margin="10">
-<TextBlock Text="Select camera:" Margin="0,0,0,4"/>
-<ComboBox ItemsSource="{Binding SecondaryCameraDevices}"
-          SelectedItem="{Binding SelectedSecondaryCamera}"
-          DisplayMemberPath="Name"
-          Margin="0,0,0,10"/>
 
-<WrapPanel Margin="0,0,0,8">
-    <Button Content="Rescan ASCOM"
-            Width="110"
-            Margin="0,0,8,0"
-            Command="{Binding RefreshSecondaryCameraListCommand}" />
+                <TextBlock Text="Select camera:" Margin="0,0,0,4"/>
+                <ComboBox ItemsSource="{Binding SecondaryCameraDevices}"
+                          SelectedItem="{Binding SelectedSecondaryCamera}"
+                          DisplayMemberPath="Name"
+                          Margin="0,0,0,10"/>
 
-    <Button Content="Driver Settings"
-            Width="110"
-            Margin="0,0,8,0"
-            Command="{Binding OpenDriverSettingsCommand}" />
+                <WrapPanel Margin="0,0,0,10">
+                    <Button Content="Rescan ASCOM"
+                            Width="120"
+                            Margin="0,0,8,8"
+                            Command="{Binding RefreshSecondaryCameraListCommand}"/>
 
-    <Button Content="Connect"
-            Width="90"
-            Margin="0,0,8,0"
-            Command="{Binding ConnectSecondaryCommand}" />
+                    <Button Content="Driver Settings"
+                            Width="120"
+                            Margin="0,0,8,8"
+                            Command="{Binding OpenDriverSettingsCommand}"/>
 
-    <Button Content="Disconnect"
-            Width="90"
-            Margin="0,0,8,0"
-            Command="{Binding DisconnectSecondaryCommand}" />
+                    <Button Content="Connect"
+                            Width="90"
+                            Margin="0,0,8,8"
+                            Command="{Binding ConnectSecondaryCommand}"/>
 
-    <Button Content="{Binding CaptureAndSolveButtonText}"
-            Width="140"
-            Margin="0,0,8,0"
-            Command="{Binding CaptureAndSolveCommand}"
-            IsEnabled="{Binding CanCaptureAndSolve}" />
+                    <Button Content="Disconnect"
+                            Width="90"
+                            Margin="0,0,8,8"
+                            Command="{Binding DisconnectSecondaryCommand}"/>
 
-    <Button Content="Calibrate Offset"
-            Width="140"
-            Command="{Binding CalibrateOffsetCommand}"
-            IsEnabled="{Binding CanCalibrateOffset}" />
-</WrapPanel>
+                    <!-- NEW: Capture only -->
+                    <Button Content="Capture"
+                            Width="110"
+                            Margin="0,0,8,8"
+                            Command="{Binding CaptureOnlyCommand}"
+                            IsEnabled="{Binding CanCaptureAndSolve}"/>
 
-<CheckBox Content="Capture and Slew"
-          IsChecked="{Binding UseSlewInsteadOfSync}"
-          Margin="0,0,0,8"/>
+                    <!-- Existing: Capture + Sync/Slew -->
+                    <Button Content="{Binding CaptureAndSolveButtonText}"
+                            Width="140"
+                            Margin="0,0,8,8"
+                            Command="{Binding CaptureAndSolveCommand}"
+                            IsEnabled="{Binding CanCaptureAndSolve}"/>
 
+                    <Button Content="Calibrate Offset"
+                            Width="140"
+                            Margin="0,0,8,8"
+                            Command="{Binding CalibrateOffsetCommand}"
+                            IsEnabled="{Binding CanCalibrateOffset}"/>
+                </WrapPanel>
 
-                <!-- Mount status -->
+                <CheckBox Content="Center and Sync"
+                          IsChecked="{Binding UseSlewInsteadOfSync}"
+                          Margin="0,0,0,10"/>
+
+                <Separator Margin="0,0,0,10"/>
+
                 <TextBlock Text="{Binding MountStatusText}"
-                           Margin="0,0,0,6"
-                           TextWrapping="Wrap"/>
+                           FontWeight="SemiBold"
+                           Margin="0,0,0,4"/>
 
-                
                 <TextBlock Text="{Binding MountDetailsText}"
-                           Margin="0,0,0,6"
-                           TextWrapping="Wrap"/><!-- Offset status -->
+                           TextWrapping="Wrap"
+                           Margin="0,0,0,6"/>
+
                 <TextBlock Text="{Binding OffsetStatusText}"
                            TextWrapping="Wrap"/>
             </StackPanel>
         </GroupBox>
 
-        <!-- Capture parameters (anzeigen!) -->
-        <GroupBox Header="Capture Parameters (from Options)" Grid.Row="2" Margin="0,0,0,10">
+        <!-- =========================
+             Solve Texts (3 lines)
+             ========================= -->
+        <GroupBox Grid.Row="2" Header="Solve Output" Margin="0,0,0,10">
+            <StackPanel Margin="10">
+
+                <!-- 1) Last guider solve text -->
+                <TextBlock Text="{Binding LastGuiderSolveText}"
+                           TextWrapping="Wrap"
+                           Margin="0,0,0,8"/>
+
+                <!-- 2) Last solve result (raw / summary) -->
+                <TextBox Text="{Binding LastSolveSummary}"
+                         TextWrapping="Wrap"
+                         IsReadOnly="True"
+                         VerticalScrollBarVisibility="Auto"
+                         Height="110"
+                         Margin="0,0,0,8"/>
+
+                <!-- 3) corrected coordinates after offset -->
+                <TextBlock Text="{Binding CorrectedSolveText}"
+                           TextWrapping="Wrap"/>
+            </StackPanel>
+        </GroupBox>
+
+        <!-- =========================
+             Readonly camera settings
+             ========================= -->
+        <GroupBox Grid.Row="3" Header="Camera settings (readonly from Options)" Margin="0,0,0,10">
             <Grid Margin="10">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="220"/>
@@ -98,7 +154,7 @@
                 <TextBlock Grid.Row="0" Grid.Column="0" Text="Exposure (sec)" VerticalAlignment="Center"/>
                 <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding GuideExposureSeconds}"/>
 
-                <TextBlock Grid.Row="1" Grid.Column="0" Text="Gain" VerticalAlignment="Center"/>
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Gain (-1 = Auto)" VerticalAlignment="Center"/>
                 <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding GuideGain}"/>
 
                 <TextBlock Grid.Row="2" Grid.Column="0" Text="Binning" VerticalAlignment="Center"/>
@@ -112,34 +168,24 @@
             </Grid>
         </GroupBox>
 
-        <!-- Solve summary (nur hier anzeigen) -->
-        <GroupBox Header="Solve Result" Grid.Row="3">
-            <Grid Margin="10">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
+        <!-- =========================
+             Image preview (stretched)
+             ========================= -->
+        <GroupBox Grid.Row="4" Header="Image Preview">
+            <Border Margin="10"
+                    BorderThickness="1"
+                    BorderBrush="#33000000"
+                    CornerRadius="4"
+                    Padding="6">
+                <Grid>
+                    <!-- Background checker/placeholder feel -->
+                    <Border Background="#08000000"/>
 
-                <TextBox Grid.Row="0"
-                         Text="{Binding LastSolveSummary}"
-                         TextWrapping="Wrap"
-                         IsReadOnly="True"
-                         VerticalScrollBarVisibility="Auto"
-                         Height="110"
-                         Margin="0,0,0,8"/>
-
-                <GroupBox Header="Captured Image" Grid.Row="1" Margin="0,0,0,8">
-                    <Border Margin="10" BorderThickness="1" BorderBrush="#33000000">
-                        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
-                            <Image Source="{Binding LastCapturedImage}" Stretch="None"/>
-                        </ScrollViewer>
-                    </Border>
-                </GroupBox>
-
-                <!-- optional: Platz für späteres Debug-Panel -->
-                <TextBlock Grid.Row="2" Text="" />
-            </Grid>
+                    <Image Source="{Binding LastCapturedImage}"
+                           Stretch="Uniform"
+                           RenderOptions.BitmapScalingMode="HighQuality"/>
+                </Grid>
+            </Border>
         </GroupBox>
 
     </Grid>

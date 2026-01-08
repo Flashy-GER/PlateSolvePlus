@@ -1,119 +1,162 @@
 ﻿# PlateSolvePlus
 
-**PlateSolvePlus** ist ein Plugin für [**N.I.N.A. (Nighttime Imaging ‘N’ Astronomy)**](https://nighttime-imaging.eu/), das es ermöglicht, **Plate Solving über eine separate Guiding-Kamera und ein Guiding-Teleskop** durchzuführen – unabhängig von der Hauptkamera.
+**PlateSolvePlus** ist ein Plugin für  
+[**N.I.N.A. (Nighttime Imaging ‘N’ Astronomy)**](https://nighttime-imaging.eu/),  
+das **Plate Solving, Sync und Centering über eine sekundäre Kamera (Guiding-Kamera) und ein separates Teleskop** ermöglicht.
 
-Das Plugin richtet sich an Astrofotografen, die ihr Guiding-Setup gezielt für schnelles, robustes und ressourcenschonendes Plate Solving nutzen möchten.
+Der Hauptanwendungsfall ist ein **Fallback-Platesolving**, wenn das Plate Solving über Hauptkamera / Hauptteleskop
+(z. B. wegen sehr langer Brennweite oder kleinem Bildfeld) nicht zuverlässig möglich ist.
 
 ---
 
 ## Motivation
 
-In vielen Setups ist das Guiding Scope:
-- deutlich kurzbrennweitiger,
-- toleranter gegenüber Seeing,
-- schneller einsatzbereit,
-- und oft frei, während die Hauptkamera belichtet.
+In vielen Setups ist das Guiding-Scope:
 
-**PlateSolvePlus** nutzt genau diesen Vorteil und erweitert N.I.N.A um die Möglichkeit, Plate Solves **über die Guiding-Kamera** durchzuführen – inklusive einer **Offset-Korrektur**, sodass das Ergebnis exakt auf das Zentrum der Hauptkamera referenziert wird.
+- deutlich kurzbrennweitiger  
+- toleranter gegenüber Seeing  
+- schneller einsatzbereit  
+- oft verfügbar, während die Hauptkamera belichtet  
+
+**PlateSolvePlus** nutzt dieses Setup gezielt für Plate Solving und
+überträgt das Ergebnis **präzise auf das Hauptteleskop** – inklusive Offset-Modell.
+
+---
+
+## Grundidee
+
+> **Guider sieht genug Himmel → löst → Offset bringt das Hauptteleskop exakt auf Ziel**
+
+Damit wird PlateSolvePlus zu einer robusten Alternative zum Standard-Platesolving in NINA,
+ohne den bestehenden Workflow zu ersetzen.
 
 ---
 
 ## Funktionsübersicht
 
 ### 🔭 Plate Solving über die Guiding-Kamera
-PlateSolvePlus verwendet die in N.I.N.A konfigurierte **Guider-Kamera**, um eigenständig Aufnahmen für das Plate Solving zu erstellen.  
-Die Hauptkamera bleibt dabei unberührt.
+- Aufnahme und Plate Solving erfolgen **ausschließlich über die sekundäre Kamera**
+- Hauptkamera bleibt vollständig unberührt
+- Nutzung der in NINA konfigurierten Plate Solver  
+  (ASTAP, PlateSolve2, ASPS, …)
 
 Typische Einsatzszenarien:
+- Sehr lange Brennweiten
+- Kleines FOV der Hauptkamera
 - Plate Solving während laufender Hauptbelichtungen
-- Schnelle Positionsbestimmung
-- Stabileres Solving bei langen Brennweiten
 
 ---
 
-### 📐 Separate Parameter für Guiding-Setup
-Alle relevanten Einstellungen können **unabhängig von der Hauptkamera** konfiguriert werden:
+### ⚙️ Separate, profilbasierte Einstellungen
+Alle relevanten Parameter sind **vom Hauptsetup entkoppelt**:
 
-- Belichtungszeit
-- Gain
-- Binning
-- Brennweite des Guiding Scopes
+- Belichtungszeit, Gain, Binning
+- Brennweite des Guiding-Scopes
 - Pixelgröße (automatisch oder manuell)
-- Plate-Solver-Parameter (Suchradius, Timeout, Downsampling)
+- Solver-Parameter  
+  (Search Radius, Downsample, Timeout)
 
-Alle Einstellungen sind **profilabhängig** und integrieren sich vollständig in das N.I.N.A-Profilkonzept.
+Alle Einstellungen sind **profilabhängig** und vollständig in das N.I.N.A-Profil integriert.
 
 ---
 
-### 🔁 Offset-Korrektur zwischen Guide- und Hauptkamera
-Da Guiding- und Hauptteleskop in der Regel **nicht exakt koaxial** ausgerichtet sind, bietet PlateSolvePlus eine integrierte Offset-Funktion:
+### 🔁 Offset-Korrektur zwischen Guide- und Hauptteleskop
 
-- Einmalige Kalibrierung zwischen Guide-Solve und Main-Solve
-- Speicherung eines festen Offsets in **RA/Dec (Bogensekunden)**
-- Automatische Anwendung des Offsets auf jedes Guide-Solve-Ergebnis
+Da Guide- und Hauptteleskop in der Regel **nicht koaxial** montiert sind,
+stellt PlateSolvePlus ein flexibles Offset-Modell bereit:
 
-Das korrigierte Ergebnis entspricht damit exakt dem Bildzentrum der Hauptkamera.
+#### Unterstützte Offset-Modi
+- **Rotation (Quaternion)** – empfohlen  
+  → rotationsstabil, meridian-flip-robust
+- **Arcsec (ΔRA / ΔDec)** – einfacher, klassischer Offset
+
+#### Eigenschaften
+- Einmalige Kalibrierung
+- Persistente Speicherung im Profil
+- Automatische Anwendung auf jedes Solve
+- Umschaltbar / deaktivierbar
+- Offset jederzeit löschbar
+
+---
+
+### 🎯 Capture + Sync / Capture + Slew (Centering)
+
+PlateSolvePlus bietet zwei zentrale Aktionen:
+
+#### ▶️ Capture + Sync
+- Guide-Solve durchführen
+- Zielkoordinate auf Hauptteleskop **synchronisieren**
+- Fallback: Offset-basierte Korrektur, wenn Sync nicht möglich ist
+
+#### ▶️ Capture + Slew (Centering)
+- NINA-ähnliches **iteratives Centering**
+- Solve → Fehlerberechnung → Korrektur-Slew
+- Abbruch bei Erreichen des Thresholds oder nach Max-Versuchen
+
+**Centering-Logik:**
+- Einheit: **arcminutes** (wie in NINA)
+- Konfigurierbar:
+  - Threshold (arcmin)
+  - Max Attempts
+- Optionaler Sync-Versuch pro Iteration
+- Fallback auf Offset-basierte Korrektur
 
 ---
 
 ### 🧭 Integration in den Imaging-Workflow
-PlateSolvePlus stellt ein **Dockable Panel im Imaging-Tab** bereit und fügt sich nahtlos in den bestehenden Workflow ein.
+- Eigenes **Dockable Panel im Imaging-Tab**
+- Zentrale Konfiguration über `Options`
+- Klare Trennung:
+  - Standard-NINA-Platesolve
+  - PlateSolvePlus-Workflow (Secondary Camera)
 
 ---
 
-## Features
+## Aktueller Feature-Stand
 
-### ✅ Aktuelle Features
-- Plate Solving über die Guiding-Kamera
-- Separate Capture-Parameter für Guide-Solves
-- Eigene Optik-Parameter für das Guiding Scope
-- Nutzung der in N.I.N.A konfigurierten Plate Solver (ASTAP, PlateSolve2, ASPS, …)
-- Profilabhängige Speicherung aller Einstellungen
-- Dockable Panel im Imaging-Tab
-- Offset-Korrektur zwischen Guide- und Hauptkamera (RA/Dec)
-
----
-
-### 🧭 Offset & Alignment
-- Kalibrierbarer Offset zwischen Guide- und Hauptkamera
-- Speicherung des Offsets in Bogensekunden
-- Automatische Anwendung bei jedem Solve
-- Schnelle Neukalibrierung bei Setup-Änderungen
+### ✅ Implementiert
+- Plate Solving über sekundäre Kamera
+- Separate Capture- & Solver-Parameter
+- Profilbasierte Settings
+- Offset-Modelle:
+  - Quaternion (Rotation)
+  - Arcsec (ΔRA / ΔDec)
+- Capture + Sync
+- Capture + Slew (iteratives Centering)
+- Sync-Fallback-Logik wie in NINA
+- Dockable UI im Imaging-Tab
 
 ---
 
-### 🚀 Geplante Features
-- Mount-Slew & Center auf Basis des Guide-Solves
-- Optionaler Mount-Sync
-- Advanced-Sequencer-Integration
-  - Eigene Sequencer Instructions (z. B. „Plate Solve via Guide Scope“)
-- Guiding-Awareness (Erkennung aktiven Guidings, optionales Pausieren)
-- Erweiterte Offset-Modelle (rotation-aware, Meridian-Flip-robust)
-- Anzeige von Solve-Qualität (RMS, Dauer, Sternanzahl)
-
----
-
-### 🛠 Langfristige Ideen
-- Unterstützung einer dedizierten dritten Kamera
-- Automatische Offset-Validierung
-- Session- oder Setup-spezifische Offset-Profile
+### 🚧 In Arbeit / Geplant
+- Sequencer-Integration  
+  (eigene Instructions: „Center via Guide Scope“)
+- Guiding-Awareness  
+  (Erkennung aktiven Guidings, optionales Pausieren)
+- Erweiterte Status- & Qualitätsanzeigen
+  - Solve-Dauer
+  - Separation
+  - Iterationen
+- Zielkoordinaten-Centering  
+  (nicht nur „aktueller Blickpunkt“)
 
 ---
 
 ## Status
-PlateSolvePlus befindet sich aktuell in aktiver Entwicklung.  
-Der Fokus liegt auf:
-- stabiler Integration in N.I.N.A,
-- klarer Trennung von Guide- und Imaging-Workflow,
-- und einem wartbaren, erweiterbaren Design.
+PlateSolvePlus befindet sich in **aktiver Entwicklung**.
+
+Fokus:
+- robuste Fallback-Lösung für schwierige Setups
+- klare Trennung von Main- und Guide-Workflow
+- saubere, NINA-konforme Architektur
 
 ---
 
 ## Lizenz
-[dieses Projekt ist unter der Mozilla Public License 2.0 veröffentlicht.
-Für Details siehe: [Lizenz](LICENSE.txt)
+Dieses Projekt ist unter der **Mozilla Public License 2.0** veröffentlicht.  
+Details siehe: [LICENSE.txt](LICENSE.txt)
 
 ---
 
 ## Mitmachen
-Feedback, Feature-Ideen und Pull Requests sind willkommen.
+Feedback, Ideen und Pull Requests sind ausdrücklich willkommen.

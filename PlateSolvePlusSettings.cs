@@ -117,6 +117,37 @@ namespace NINA.Plugins.PlateSolvePlus {
         }
 
         // =========================
+        // Centering (like NINA)
+        // =========================
+        private double centeringThresholdArcmin = 1.0;
+        /// <summary>
+        /// Centering tolerance in arcminutes (same unit NINA uses for centering threshold).
+        /// </summary>
+        public double CenteringThresholdArcmin {
+            get => centeringThresholdArcmin;
+            set {
+                var v = Math.Max(0.01, value);
+                if (Math.Abs(centeringThresholdArcmin - v) < 0.000001) return;
+                centeringThresholdArcmin = v;
+                RaisePropertyChanged();
+            }
+        }
+
+        private int centeringMaxAttempts = 5;
+        /// <summary>
+        /// Maximum number of sync/slew iterations during Capture+Slew/Sync.
+        /// </summary>
+        public int CenteringMaxAttempts {
+            get => centeringMaxAttempts;
+            set {
+                var v = Math.Max(1, value);
+                if (centeringMaxAttempts == v) return;
+                centeringMaxAttempts = v;
+                RaisePropertyChanged();
+            }
+        }
+
+        // =========================
         // Offset
         // =========================
         private bool offsetEnabled = true;

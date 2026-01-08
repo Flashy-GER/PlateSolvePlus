@@ -59,6 +59,8 @@ namespace NINA.Plugins.PlateSolvePlus {
 
         // For Options.xaml "Delete Rotation Offset"
         public ICommand ResetRotationOffsetCommand { get; }
+        public ICommand ResetOffsetCommand { get; }
+
 
         private bool isLoadingSettings;
 
@@ -71,6 +73,8 @@ namespace NINA.Plugins.PlateSolvePlus {
             Settings = new PlateSolvePlusSettings();
 
             ResetRotationOffsetCommand = new SimpleCommand(ResetRotationOffset);
+            ResetOffsetCommand = new SimpleCommand(ResetOffset);
+
 
             LoadAllIntoSettings(Settings);
 
@@ -102,8 +106,17 @@ namespace NINA.Plugins.PlateSolvePlus {
             PlateSolvePlusSettingsBus.Publish(name, GetCurrentValue(name));
 
             RaisePropertyChanged(name);
+
+            if (name == nameof(PlateSolvePlusSettings.OffsetMode) || name == nameof(PlateSolvePlusSettings.OffsetModeInt)) {
+                RaisePropertyChanged(nameof(IsRotationMode));
+                RaisePropertyChanged(nameof(IsArcsecMode));
+            }
+
         }
 
+        private void ResetOffset() {
+            Settings.ResetOffset();
+        }
         private void LoadAllIntoSettings(PlateSolvePlusSettings s) {
             isLoadingSettings = true;
             try {
@@ -121,6 +134,10 @@ namespace NINA.Plugins.PlateSolvePlus {
                 s.SolverSearchRadiusDeg = Math.Max(0.1, options.GetValueDouble(nameof(PlateSolvePlusSettings.SolverSearchRadiusDeg), 5.0));
                 s.SolverDownsample = Math.Max(0, options.GetValueInt32(nameof(PlateSolvePlusSettings.SolverDownsample), 2));
                 s.SolverTimeoutSec = Math.Max(1, options.GetValueInt32(nameof(PlateSolvePlusSettings.SolverTimeoutSec), 60));
+
+                // Centering (arcmin like NINA)
+                s.CenteringThresholdArcmin = Math.Max(0.01, options.GetValueDouble(nameof(PlateSolvePlusSettings.CenteringThresholdArcmin), 1.0));
+                s.CenteringMaxAttempts = Math.Max(1, options.GetValueInt32(nameof(PlateSolvePlusSettings.CenteringMaxAttempts), 5));
 
                 // Offset quaternion
                 s.RotationQw = options.GetValueDouble(nameof(PlateSolvePlusSettings.RotationQw), 1.0);
@@ -153,6 +170,30 @@ namespace NINA.Plugins.PlateSolvePlus {
             }
         }
 
+
+        public bool IsRotationMode {
+            get => Settings.OffsetMode == OffsetMode.Rotation;
+            set {
+                if (!value) return;
+                if (Settings.OffsetMode == OffsetMode.Rotation) return;
+                Settings.OffsetMode = OffsetMode.Rotation;
+                RaisePropertyChanged(nameof(IsRotationMode));
+                RaisePropertyChanged(nameof(IsArcsecMode));
+            }
+        }
+
+        public bool IsArcsecMode {
+            get => Settings.OffsetMode == OffsetMode.Arcsec;
+            set {
+                if (!value) return;
+                if (Settings.OffsetMode == OffsetMode.Arcsec) return;
+                Settings.OffsetMode = OffsetMode.Arcsec;
+                RaisePropertyChanged(nameof(IsRotationMode));
+                RaisePropertyChanged(nameof(IsArcsecMode));
+            }
+        }
+
+
         private void PersistSingle(string propertyName) {
             switch (propertyName) {
 
@@ -179,6 +220,12 @@ namespace NINA.Plugins.PlateSolvePlus {
                     options.SetValueInt32(propertyName, Settings.SolverDownsample); break;
                 case nameof(PlateSolvePlusSettings.SolverTimeoutSec):
                     options.SetValueInt32(propertyName, Settings.SolverTimeoutSec); break;
+
+                // Centering
+                case nameof(PlateSolvePlusSettings.CenteringThresholdArcmin):
+                    options.SetValueDouble(propertyName, Settings.CenteringThresholdArcmin); break;
+                case nameof(PlateSolvePlusSettings.CenteringMaxAttempts):
+                    options.SetValueInt32(propertyName, Settings.CenteringMaxAttempts); break;
 
                 // Offset enabled + arcsec
                 case nameof(PlateSolvePlusSettings.OffsetEnabled):
@@ -231,6 +278,9 @@ namespace NINA.Plugins.PlateSolvePlus {
                 nameof(PlateSolvePlusSettings.SolverDownsample) => Settings.SolverDownsample,
                 nameof(PlateSolvePlusSettings.SolverTimeoutSec) => Settings.SolverTimeoutSec,
 
+                nameof(PlateSolvePlusSettings.CenteringThresholdArcmin) => Settings.CenteringThresholdArcmin,
+                nameof(PlateSolvePlusSettings.CenteringMaxAttempts) => Settings.CenteringMaxAttempts,
+
                 nameof(PlateSolvePlusSettings.OffsetEnabled) => Settings.OffsetEnabled,
                 nameof(PlateSolvePlusSettings.OffsetRaArcsec) => Settings.OffsetRaArcsec,
                 nameof(PlateSolvePlusSettings.OffsetDecArcsec) => Settings.OffsetDecArcsec,
@@ -252,6 +302,7 @@ namespace NINA.Plugins.PlateSolvePlus {
         public event PropertyChangedEventHandler? PropertyChanged;
         protected void RaisePropertyChanged([CallerMemberName] string? propertyName = null) {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+
         }
     }
 }

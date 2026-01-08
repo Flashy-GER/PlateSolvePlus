@@ -17,6 +17,7 @@ using System.ComponentModel;
 using System.ComponentModel.Composition;
 using System.Globalization;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -38,7 +39,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
         private readonly IProfileService profileService;
 
-
         [Import]
         private Lazy<IPlateSolvePlusContext> ContextLazy { get; set; } = null!;
         private IPlateSolvePlusContext Context => ContextLazy.Value;
@@ -48,7 +48,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
         [Import(AllowDefault = true)]
         public ITelescopeMediator? TelescopeMediator { get; set; }
-
 
         // Preferred, robust telescope coordinate access used for connection state & RA/Dec
         [Import(AllowDefault = true)]
@@ -65,7 +64,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
         private bool pluginSettingsHooked;
         private bool busHooked;
-
         private bool telescopeReferenceHooked;
 
         private IAscomDeviceDiscoveryService AscomDiscovery => Context.AscomDiscovery;
@@ -84,18 +82,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 RaisePropertyChanged(nameof(SelectedSecondaryCamera));
                 SelectedSecondaryCameraProgId = selectedSecondaryCamera?.ProgId;
             }
-        }
-
-        private void ApplyTelescopeReferenceUpdate(TelescopeReferenceUpdatedEventArgs e) {
-            if (e.Success && e.RaDeg.HasValue && e.DecDeg.HasValue) {
-                IsMountConnected = true;
-                MountDetailsText = $"RA {AstroFormat.FormatRaHms(e.RaDeg.Value)} / Dec {AstroFormat.FormatDecDms(e.DecDeg.Value)}";
-                return;
-            }
-
-            var connected = DetectMountConnected();
-            IsMountConnected = connected;
-            MountDetailsText = connected ? "Verbunden ✅ (Koordinaten noch nicht verfügbar…)" : string.Empty;
         }
 
         private string? selectedSecondaryCameraProgId;
@@ -126,8 +112,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         private void StartMountPoll() {
             if (mountPollTimer != null) return;
 
-            // Ensure timer is created on UI dispatcher
-            var dispatcher = System.Windows.Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
+            var dispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
 
             mountPollTimer = new DispatcherTimer(DispatcherPriority.Background, dispatcher) {
                 Interval = MountPollInterval
@@ -135,10 +120,8 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
             mountPollTimer.Tick += (_, __) => {
                 try {
-                    
                     RefreshTelescopeCoordsFromService();
                 } catch (Exception ex) {
-                    // polling must never crash the UI
                     Logger.Debug($"Mount poll tick failed: {ex.Message}");
                 }
             };
@@ -152,7 +135,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             mountPollTimer = null;
         }
 
-
+        // ===== Settings mirror (readonly) =====
         private double guideExposureSeconds = 2.0;
         public double GuideExposureSeconds {
             get => guideExposureSeconds;
@@ -244,11 +227,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             private set { if (offsetLastCalibratedUtc == value) return; offsetLastCalibratedUtc = value; RaisePropertyChanged(nameof(OffsetLastCalibratedUtc)); RaisePropertyChanged(nameof(OffsetStatusText)); }
         }
 
-        private int? GetEffectiveGain() {
-            var g = GuideGain;
-            return g >= 0 ? g : (int?)null;
-        }
-
         // ===== Image preview =====
         private BitmapSource? lastCapturedImage;
         public BitmapSource? LastCapturedImage {
@@ -262,31 +240,51 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             set { lastSolveSummary = value; RaisePropertyChanged(nameof(LastSolveSummary)); }
         }
 
+        // ===== New: text lines for your UI sketch =====
+        private string lastGuiderSolveText = "-";
+        public string LastGuiderSolveText {
+            get => lastGuiderSolveText;
+            set { if (lastGuiderSolveText == value) return; lastGuiderSolveText = value; RaisePropertyChanged(nameof(LastGuiderSolveText)); }
+        }
+
+        private string correctedSolveText = "-";
+        public string CorrectedSolveText {
+            get => correctedSolveText;
+            set { if (correctedSolveText == value) return; correctedSolveText = value; RaisePropertyChanged(nameof(CorrectedSolveText)); }
+        }
+
+        // internal cached solves
+        private (double raDeg, double decDeg)? lastGuiderSolveDeg;
+        private (double raDeg, double decDeg)? lastCorrectedSolveDeg;
+
         // ===== Commands =====
         public ICommand RefreshSecondaryCameraListCommand { get; }
         public ICommand OpenDriverSettingsCommand { get; }
         public ICommand ConnectSecondaryCommand { get; }
         public ICommand DisconnectSecondaryCommand { get; }
-        public ICommand CaptureCommand { get; }
+
+        // NEW: Capture-only (sets offset if not present)
+        public ICommand CaptureOnlyCommand { get; }
+
+        // Existing: "Capture + Sync/Slew" button in your view binds to this name
+        public ICommand CaptureAndSolveCommand { get; }
+
         public ICommand CalibrateOffsetCommand { get; }
 
-        // ===== View bindings (CameraDockableView.xaml expects these names) =====
-        // Keep the existing internal command names, but expose aliases that match the XAML bindings.
-        public ICommand CaptureAndSolveCommand => CaptureCommand;
-
-        private bool useSlewInsteadOfSync;
+        // ===== View bindings compatibility =====
         public bool UseSlewInsteadOfSync {
             get => useSlewInsteadOfSync;
             set {
                 if (useSlewInsteadOfSync == value) return;
                 useSlewInsteadOfSync = value;
                 RaisePropertyChanged(nameof(UseSlewInsteadOfSync));
-                RaiseCaptureCalibrateUiState(); // Text + IsEnabled aktualisieren
+                RaiseCaptureCalibrateUiState();
             }
         }
+        private bool useSlewInsteadOfSync;
 
         public string CaptureAndSolveButtonText =>
-            UseSlewInsteadOfSync ? "Capture + Slew" : "Capture + Sync";
+            UseSlewInsteadOfSync ? "Center + Sync" : "Capture + Sync";
 
         public bool CanCaptureAndSolve =>
             importsReady &&
@@ -295,11 +293,9 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
         private bool HasOffsetSet {
             get {
-                // „Offset gesetzt“ wenn enabled UND irgendein Wert wirklich ungleich default ist
                 if (!OffsetEnabled) return false;
 
                 if (OffsetMode == OffsetMode.Rotation) {
-                    // Identity quaternion ~ kein Offset
                     var isIdentity = Math.Abs(RotationQw - 1.0) < 1e-6 &&
                                      Math.Abs(RotationQx) < 1e-6 &&
                                      Math.Abs(RotationQy) < 1e-6 &&
@@ -307,7 +303,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                     return !isIdentity;
                 }
 
-                // Arcsec mode
                 return Math.Abs(OffsetRaArcsec) > 1e-6 || Math.Abs(OffsetDecArcsec) > 1e-6;
             }
         }
@@ -317,36 +312,26 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             IsMountConnected &&
             IsSecondaryConnected &&
             PluginSettings?.Settings != null &&
-            !HasOffsetSet; // nur wenn noch kein Offset gesetzt
-
+            !HasOffsetSet;
 
         private void RaiseCaptureCalibrateUiState() {
             RaisePropertyChanged(nameof(CanCaptureAndSolve));
             RaisePropertyChanged(nameof(CanCalibrateOffset));
             RaisePropertyChanged(nameof(CaptureAndSolveButtonText));
-            RaisePropertyChanged(nameof(CaptureAndSolveCommand)); // optional, aber harmlos
         }
 
-        private void RaiseActionCanExecuteChanged() {
-            RaisePropertyChanged(nameof(CanCaptureAndSolve));
-            RaisePropertyChanged(nameof(CanCalibrateOffset));
-            RaisePropertyChanged(nameof(CaptureAndSolveButtonText));
-
-        }
-
-        // ===== UI state =====
         private bool isSecondaryConnected;
         public bool IsSecondaryConnected {
             get => isSecondaryConnected;
-            set { isSecondaryConnected = value; RaisePropertyChanged(nameof(IsSecondaryConnected));
-            RaiseCaptureCalibrateUiState();
+            set {
+                isSecondaryConnected = value;
+                RaisePropertyChanged(nameof(IsSecondaryConnected));
+                RaiseCaptureCalibrateUiState();
             }
-
         }
 
         private void UpdateConnectionStateFromService() {
             try { IsSecondaryConnected = SecondaryCameraService.IsConnected; } catch { IsSecondaryConnected = false; }
-
             RaiseCaptureCalibrateUiState();
         }
 
@@ -371,6 +356,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 RaisePropertyChanged(nameof(IsMountConnected));
                 RaisePropertyChanged(nameof(MountStatusText));
                 RaisePropertyChanged(nameof(MountDetailsText));
+                RaiseCaptureCalibrateUiState();
             }
         }
 
@@ -414,11 +400,15 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             ConnectSecondaryCommand = new SimpleAsyncCommand(ConnectSecondaryAsync);
             DisconnectSecondaryCommand = new SimpleAsyncCommand(DisconnectSecondaryAsync);
 
-            CaptureCommand = new SimpleAsyncCommand(CaptureAndSolveAsync);
+            // NEW: capture-only
+            CaptureOnlyCommand = new SimpleAsyncCommand(CaptureOnlyAsync);
+
+            // Existing: capture + sync/slew
+            CaptureAndSolveCommand = new SimpleAsyncCommand(CaptureAndSyncOrSlewAsync);
+
             CalibrateOffsetCommand = new SimpleAsyncCommand(CalibrateOffsetAsync);
 
             StatusText = "Waiting for MEF imports…";
-
             this.profileService.ProfileChanged += ProfileService_ProfileChanged;
         }
 
@@ -442,19 +432,11 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 HookPluginSettings();
                 HookSettingsBus();
 
-
                 WireTelescopeReferenceService();
-                Logger.Debug(
-                    $"[CameraDockable] OnImportsSatisfied | " +
-                    $"TRS instance={TelescopeReferenceService?.GetHashCode()} | " +
-                    $"Mediator={TelescopeReferenceService?.TelescopeMediator?.GetHashCode()} | " +
-                    $"Dockable this={this.GetHashCode()}"
-                 );
 
                 StartMountPoll();
                 UpdateMountConnectionState();
 
-                // initial sync (from plugin settings instance)
                 ApplySettings(ReadSettingsFromPluginInstance(), force: true);
                 UpdateMountConnectionState();
             } catch (Exception ex) {
@@ -478,14 +460,11 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         private void ProfileService_ProfileChanged(object? sender, EventArgs e) {
             ApplySettings(ReadSettingsFromPluginInstance(), force: true);
 
-            // In case the mediator instance changed with profile/equipment changes
             if (TelescopeReferenceService != null) {
                 TelescopeReferenceService.TelescopeMediator = TelescopeMediator;
             }
 
             UpdateMountConnectionState();
-            DebugDumpMountBoolProperties("After ProfileChanged");
-
         }
 
         private void HookPluginSettings() {
@@ -519,17 +498,13 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         private void WireTelescopeReferenceService() {
             if (telescopeReferenceHooked) return;
 
-            // Ensure our reference service uses the current mediator
             if (TelescopeReferenceService != null) {
                 TelescopeReferenceService.TelescopeMediator = TelescopeMediator;
                 TelescopeReferenceService.ReferenceUpdated += TelescopeReferenceService_ReferenceUpdated;
                 telescopeReferenceHooked = true;
             }
 
-            // Initial refresh (also covers the case where service is null)
             UpdateMountConnectionState();
-            DebugDumpMountBoolProperties("After Connection");
-
         }
 
         private void UnwireTelescopeReferenceService() {
@@ -540,43 +515,45 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                     TelescopeReferenceService.ReferenceUpdated -= TelescopeReferenceService_ReferenceUpdated;
                     TelescopeReferenceService.TelescopeMediator = null;
                 }
-            } catch {
-                // ignore
-            }
+            } catch { }
 
             telescopeReferenceHooked = false;
         }
 
         private void TelescopeReferenceService_ReferenceUpdated(object? sender, TelescopeReferenceUpdatedEventArgs e) {
             try {
-                // We want this to reflect in UI quickly even if fired from background context.
                 if (Application.Current?.Dispatcher != null && !Application.Current.Dispatcher.CheckAccess()) {
                     Application.Current.Dispatcher.InvokeAsync(() => ApplyTelescopeReferenceUpdate(e));
                 } else {
                     ApplyTelescopeReferenceUpdate(e);
                 }
-            } catch {
-                // ignore
+            } catch { }
+        }
+
+        private void ApplyTelescopeReferenceUpdate(TelescopeReferenceUpdatedEventArgs e) {
+            if (e.Success && e.RaDeg.HasValue && e.DecDeg.HasValue) {
+                IsMountConnected = true;
+                MountDetailsText = $"RA {AstroFormat.FormatRaHms(e.RaDeg.Value)} / Dec {AstroFormat.FormatDecDms(e.DecDeg.Value)}";
+                return;
             }
+
+            var connected = DetectMountConnected();
+            IsMountConnected = connected;
+            MountDetailsText = connected ? "Verbunden ✅ (Koordinaten noch nicht verfügbar…)" : string.Empty;
         }
 
         private void SettingsBus_SettingChanged(object? sender, PlateSolvePlusSettingChangedEventArgs e) {
-            // UI thread safe
             try {
                 if (Application.Current?.Dispatcher != null && !Application.Current.Dispatcher.CheckAccess()) {
                     Application.Current.Dispatcher.InvokeAsync(() => ApplySingleFromBus(e.Key, e.Value));
                 } else {
                     ApplySingleFromBus(e.Key, e.Value);
                 }
-            } catch {
-                // ignore
-            }
+            } catch { }
         }
 
         private void ApplySingleFromBus(string key, object? value) {
             switch (key) {
-
-                // Capture / optics
                 case nameof(PlateSolvePlusSettings.GuideExposureSeconds):
                     if (value is double d1) GuideExposureSeconds = d1;
                     break;
@@ -601,7 +578,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                     if (value is double d3) GuidePixelSizeUm = Math.Max(0.1, d3);
                     break;
 
-                // Offset / rotation
                 case nameof(PlateSolvePlusSettings.OffsetEnabled):
                     if (value is bool bo) OffsetEnabled = bo;
                     break;
@@ -615,7 +591,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                     break;
 
                 case nameof(PlateSolvePlusSettings.OffsetLastCalibratedUtc):
-                    // Bus kann DateTime oder null schicken
                     if (value is DateTime dt) OffsetLastCalibratedUtc = dt;
                     else OffsetLastCalibratedUtc = null;
                     break;
@@ -643,17 +618,27 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 default:
                     break;
             }
+
+            // if we already have a guider solve -> refresh corrected display immediately
+            UpdateSolvedTextsAfterOffsetChange();
+            RaiseCaptureCalibrateUiState();
         }
 
+        private void UpdateSolvedTextsAfterOffsetChange() {
+            if (!lastGuiderSolveDeg.HasValue) return;
+
+            var (ra, dec) = lastGuiderSolveDeg.Value;
+            lastCorrectedSolveDeg = ComputeCorrectedIfEnabled(ra, dec);
+
+            CorrectedSolveText = lastCorrectedSolveDeg.HasValue
+                ? FormatSolvedLine("Corrected", lastCorrectedSolveDeg.Value.raDeg, lastCorrectedSolveDeg.Value.decDeg)
+                : "Corrected: (Offset disabled or not set) → using guider solve as-is.";
+        }
 
         private void PluginSettings_PropertyChanged(object? sender, PropertyChangedEventArgs e) {
             ApplySettings(ReadSettingsFromPluginInstance(), force: false);
+            UpdateSolvedTextsAfterOffsetChange();
         }
-
-
-        // ============================
-        // Read + Apply (ONLY from plugin instance)
-        // ============================
 
         private PlateSolvePlusSettings ReadSettingsFromPluginInstance() {
             var ps = PluginSettings;
@@ -685,7 +670,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             return s;
         }
 
-
         private void ApplySettings(PlateSolvePlusSettings s, bool force) {
             if (force) {
                 GuideExposureSeconds = s.GuideExposureSeconds;
@@ -706,6 +690,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 RotationQy = s.RotationQy;
                 RotationQz = s.RotationQz;
 
+                RaiseCaptureCalibrateUiState();
                 return;
             }
 
@@ -728,10 +713,139 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             if (Math.Abs(RotationQx - s.RotationQx) > 0.000001) RotationQx = s.RotationQx;
             if (Math.Abs(RotationQy - s.RotationQy) > 0.000001) RotationQy = s.RotationQy;
             if (Math.Abs(RotationQz - s.RotationQz) > 0.000001) RotationQz = s.RotationQz;
+
+            RaiseCaptureCalibrateUiState();
         }
 
         // ============================
-        // Calibrate Offset -> writes directly into Options (PluginSettings.Settings)
+        // Your requested workflow
+        // ============================
+
+        /// <summary>
+        /// "Capture" (without sync/slew):
+        /// - capture + solve guider
+        /// - if offset is deleted/not present -> set NEW offset (using mount RA/Dec as main ref)
+        /// - update texts
+        /// </summary>
+        private async Task CaptureOnlyAsync() {
+            UpdateMountConnectionState();
+
+            var solve = await CaptureAndSolveGuiderAsync(updateUi: true).ConfigureAwait(false);
+            if (!solve.success) return;
+
+            // remember guider solve
+            lastGuiderSolveDeg = (solve.raDeg, solve.decDeg);
+            LastGuiderSolveText = FormatSolvedLine("Guider", solve.raDeg, solve.decDeg);
+
+            // If offset deleted / not present -> set NEW offset
+            if (!HasOffsetSet) {
+                await AutoSetOffsetIfMissingAsync(solve.raDeg, solve.decDeg).ConfigureAwait(false);
+            }
+
+            // corrected preview
+            lastCorrectedSolveDeg = ComputeCorrectedIfEnabled(solve.raDeg, solve.decDeg);
+            CorrectedSolveText = lastCorrectedSolveDeg.HasValue
+                ? FormatSolvedLine("Corrected", lastCorrectedSolveDeg.Value.raDeg, lastCorrectedSolveDeg.Value.decDeg)
+                : "Corrected: (Offset disabled or not set) → using guider solve as-is.";
+        }
+
+        /// <summary>
+        /// "Capture + Sync" / "Capture + Slew":
+        /// - capture + solve guider
+        /// - apply offset (only if enabled AND set)
+        /// - sync/slew to corrected coords
+        /// - update texts
+        /// </summary>
+        private async Task CaptureAndSyncOrSlewAsync() {
+            UpdateMountConnectionState();
+
+            var solve = await CaptureAndSolveGuiderAsync(updateUi: true).ConfigureAwait(false);
+            if (!solve.success) return;
+
+            // compute corrected (only if enabled + set)
+            lastCorrectedSolveDeg = ComputeCorrectedIfEnabled(solve.raDeg, solve.decDeg);
+            var target = lastCorrectedSolveDeg ?? (solve.raDeg, solve.decDeg);
+
+            // ab hier NUR target verwenden, nicht "solve" außerhalb dieses Scopes verschieben
+
+            if (!TryToCoordinates(target.raDeg, target.decDeg, out var targetCoords)) {
+                return;
+            }
+
+            if (UseSlewInsteadOfSync) {
+                // Capture + Slew = Centering loop like NINA (arcmin)
+                var thr = PluginSettings?.Settings?.CenteringThresholdArcmin ?? 1.0;
+                var max = PluginSettings?.Settings?.CenteringMaxAttempts ?? 5;
+
+                await CenterWithSecondaryAsync(thr, max, CancellationToken.None).ConfigureAwait(false);
+                return;
+            }
+        }
+
+
+        private async Task AutoSetOffsetIfMissingAsync(double guiderRaDeg, double guiderDecDeg) {
+            // need plugin settings to persist
+            if (PluginSettings?.Settings == null) {
+                StatusText = "Cannot set offset ❌";
+                DetailsText = "PluginSettings.Settings not available.";
+                return;
+            }
+
+            if (TelescopeReferenceService == null) {
+                StatusText = "Cannot set offset ❌";
+                DetailsText = "TelescopeReferenceService not available.";
+                return;
+            }
+
+            if (!TelescopeReferenceService.TryGetCurrentRaDec(out var mainRaDeg, out var mainDecDeg)) {
+                StatusText = "Cannot set offset ❌";
+                DetailsText = "Mount RA/Dec not available (TelescopeReferenceService).";
+                return;
+            }
+
+            try {
+                var svc = new OffsetService();
+
+                // respects current Settings.OffsetMode (Rotation / Arcsec) inside OffsetService
+                svc.Calibrate(PluginSettings.Settings, mainRaDeg, mainDecDeg, guiderRaDeg, guiderDecDeg);
+
+                PluginSettings.Settings.OffsetEnabled = true;
+                PluginSettings.Settings.OffsetLastCalibratedUtc = DateTime.UtcNow;
+
+                // mirror immediately
+                ApplySettings(ReadSettingsFromPluginInstance(), force: false);
+
+                StatusText = "Offset set automatically ✅";
+                DetailsText =
+                    $"Main RA/Dec: {mainRaDeg:0.######}°, {mainDecDeg:0.######}°\n" +
+                    $"Guider RA/Dec: {guiderRaDeg:0.######}°, {guiderDecDeg:0.######}°\n" +
+                    $"Mode: {PluginSettings.Settings.OffsetMode}";
+            } catch (Exception ex) {
+                StatusText = "Auto offset failed ❌";
+                DetailsText = ex.ToString();
+            }
+        }
+
+        private (double raDeg, double decDeg)? ComputeCorrectedIfEnabled(double raDeg, double decDeg) {
+            if (!OffsetEnabled) return null;
+            if (!HasOffsetSet) return null;
+            if (PluginSettings?.Settings == null) return null;
+
+            try {
+                var svc = new OffsetService();
+                var res = svc.ApplyToGuiderSolve(PluginSettings.Settings, raDeg, decDeg);
+                return res;
+            } catch {
+                return null;
+            }
+        }
+
+        private static string FormatSolvedLine(string label, double raDeg, double decDeg) {
+            return $"{label}: RA {AstroFormat.FormatRaHms(raDeg)} / Dec {AstroFormat.FormatDecDms(decDeg)}  (deg: {raDeg:0.######}, {decDeg:0.######})";
+        }
+
+        // ============================
+        // Existing: manual Calibrate Offset (still valid)
         // ============================
         private async Task CalibrateOffsetAsync() {
             if (!importsReady) {
@@ -759,7 +873,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 return;
             }
 
-            // Prefer TelescopeReferenceService (same path as PlatesolveplusDockable)
             if (TelescopeReferenceService == null) {
                 StatusText = "Cannot read mount coordinates ❌";
                 DetailsText = "TelescopeReferenceService not available (MEF import failed).";
@@ -772,16 +885,16 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 return;
             }
 
-
             StatusText = "Calibrating offset…";
             DetailsText = "Capturing + solving guider frame.";
 
             var guiderSolve = await CaptureAndSolveGuiderAsync(updateUi: true).ConfigureAwait(false);
-            if (!guiderSolve.success) {
-                return; // helper sets UI already
-            }
+            if (!guiderSolve.success) return;
 
-            // Compute + write into Options (Settings is the source of truth)
+            // remember guider solve
+            lastGuiderSolveDeg = (guiderSolve.raDeg, guiderSolve.decDeg);
+            LastGuiderSolveText = FormatSolvedLine("Guider", guiderSolve.raDeg, guiderSolve.decDeg);
+
             var svc = new OffsetService();
             svc.Calibrate(PluginSettings.Settings, mainRaDeg, mainDecDeg, guiderSolve.raDeg, guiderSolve.decDeg);
 
@@ -794,10 +907,18 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 $"Guider RA/Dec: {guiderSolve.raDeg:0.######}°, {guiderSolve.decDeg:0.######}°\n" +
                 $"Mode: {PluginSettings.Settings.OffsetMode}";
 
-            // Mirror UI immediately (bus will also follow)
             ApplySettings(ReadSettingsFromPluginInstance(), force: false);
+
+            // corrected preview
+            lastCorrectedSolveDeg = ComputeCorrectedIfEnabled(guiderSolve.raDeg, guiderSolve.decDeg);
+            CorrectedSolveText = lastCorrectedSolveDeg.HasValue
+                ? FormatSolvedLine("Corrected", lastCorrectedSolveDeg.Value.raDeg, lastCorrectedSolveDeg.Value.decDeg)
+                : "Corrected: (Offset disabled or not set) → using guider solve as-is.";
         }
 
+        // ============================
+        // Capture + Solve (guider)
+        // ============================
         private async Task<(bool success, double raDeg, double decDeg)> CaptureAndSolveGuiderAsync(bool updateUi) {
             if (!importsReady) return (false, 0, 0);
 
@@ -857,11 +978,11 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                     isBayered: false,
                     metaData: new ImageMetaData());
 
-                var psSettings = profileService.ActiveProfile.PlateSolveSettings;
-
-                double searchRadiusDeg = ReadDouble(psSettings, "SearchRadius", "SearchRadiusDeg", "Radius", "RadiusDeg") ?? 5.0;
-                int downsample = ReadInt(psSettings, "Downsample", "DownSample", "DownSampling", "DownSamplingFactor") ?? 2;
-                int timeoutSec = ReadInt(psSettings, "Timeout", "TimeoutSeconds", "SolveTimeout", "SolveTimeoutSeconds") ?? 60;
+                // IMPORTANT: we now use your plugin Settings from Options as source of truth
+                var s = PluginSettings?.Settings;
+                double searchRadiusDeg = s?.SolverSearchRadiusDeg ?? 5.0;
+                int downsample = s?.SolverDownsample ?? 2;
+                int timeoutSec = s?.SolverTimeoutSec ?? 60;
 
                 double focalLengthMm = GuideFocalLengthMm;
                 double pixelSizeUm = GuidePixelSizeUm;
@@ -874,6 +995,8 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                     pixelSizeUm: pixelSizeUm
                 );
 
+                // Solver selection comes from active profile plate solve settings (NINA internal)
+                var psSettings = profileService.ActiveProfile.PlateSolveSettings;
                 var solver = psFactory.GetPlateSolver(psSettings);
 
                 if (updateUi) StatusText = "Solving…";
@@ -923,50 +1046,44 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             }
         }
 
-        private void UpdateMountConnectionState() {
-            Logger.Debug(
-                $"[CameraDockable] UpdateMountConnectionState | " +
-                $"TRS instance={TelescopeReferenceService?.GetHashCode()} | " +
-                $"Mediator={TelescopeReferenceService?.TelescopeMediator?.GetHashCode()} | " +
-                $"LocalMediator={TelescopeMediator?.GetHashCode()}"
-             );
+        private int? GetEffectiveGain() {
+            var g = GuideGain;
+            return g >= 0 ? g : (int?)null;
+        }
 
+        // ============================
+        // Mount connection + coords
+        // ============================
+        private void UpdateMountConnectionState() {
             var connected = DetectMountConnected();
             IsMountConnected = connected;
-            //  DebugDumpMountRaDecFromInfo();
 
             if (!connected) {
                 MountDetailsText = string.Empty;
                 return;
             }
 
-            // Best effort: show current coordinates (helps troubleshooting)
             try {
                 MountDetailsText = (TelescopeReferenceService != null &&
                                    TelescopeReferenceService.TryGetCurrentRaDec(out var raDeg, out var decDeg))
                     ? $"RA {AstroFormat.FormatRaHms(raDeg)} / Dec {AstroFormat.FormatDecDms(decDeg)}"
                     : "Verbunden ✅ (Koordinaten noch nicht verfügbar…)";
             } catch {
-
-                MountDetailsText = "Verbunden ✅)";
-
+                MountDetailsText = "Verbunden ✅";
             }
         }
 
         private void RefreshTelescopeCoordsFromService() {
-            // wichtig: Mediator bei jedem Refresh sicher setzen (Mount kann im UI gewechselt werden)
             if (TelescopeReferenceService != null) {
                 TelescopeReferenceService.TelescopeMediator = TelescopeMediator;
 
                 if (TelescopeReferenceService.TryGetCurrentRaDec(out var raDeg, out var decDeg)) {
-                    // direkt in UI übernehmen
                     IsMountConnected = true;
                     MountDetailsText = $"RA {AstroFormat.FormatRaHms(raDeg)} / Dec {AstroFormat.FormatDecDms(decDeg)}";
                     return;
                 }
             }
 
-            // Koordinaten nicht lesbar → aber Connection über GetInfo().Connected bestimmen
             var connected = DetectMountConnected();
             IsMountConnected = connected;
             MountDetailsText = connected ? "Verbunden ✅ (Koordinaten noch nicht verfügbar…)" : string.Empty;
@@ -976,12 +1093,10 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             var tm = TelescopeMediator;
             if (tm == null) return false;
 
-            // 1) PRIMARY: NINA liefert bei dir Connected über GetInfo()
             var info = InvokeGetInfo(tm);
             var c = TryGetProp(info, "Connected");
             if (c is bool b) return b;
 
-            // 2) Fallbacks (nur falls GetInfo mal nichts liefert)
             var knownNames = new[] { "IsConnected", "Connected", "DeviceConnected", "IsDeviceConnected", "HasConnection" };
 
             foreach (var name in knownNames) {
@@ -1004,61 +1119,18 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             if (tm == null) return null;
             try {
                 var mi = tm.GetType().GetMethod("GetInfo",
-                    System.Reflection.BindingFlags.Instance |
-                    System.Reflection.BindingFlags.Public |
-                    System.Reflection.BindingFlags.NonPublic);
+                    BindingFlags.Instance |
+                    BindingFlags.Public |
+                    BindingFlags.NonPublic);
                 return mi?.Invoke(tm, null);
             } catch {
                 return null;
             }
         }
 
-        private bool TryGetMountRaDecDeg(out double raDeg, out double decDeg, out string error) {
-            raDeg = 0;
-            decDeg = 0;
-            error = "";
-
-            if (TelescopeMediator == null) {
-                error = "TelescopeMediator is null (not imported).";
-                return false;
-            }
-
-            var coordsObj =
-                TryGetProp(TelescopeMediator, "Coordinates") ??
-                TryGetProp(TelescopeMediator, "TelescopeCoordinates") ??
-                TryGetProp(TelescopeMediator, "CurrentCoordinates");
-
-            if (coordsObj is Coordinates coords) {
-                raDeg = GetRightAscensionHours(coords) * 15.0;
-                decDeg = GetDeclinationDegrees(coords);
-                return true;
-            }
-
-            var ra = TryGetProp(TelescopeMediator, "RightAscension") ?? TryGetProp(TelescopeMediator, "RA");
-            var dec = TryGetProp(TelescopeMediator, "Declination") ?? TryGetProp(TelescopeMediator, "Dec");
-
-            var raHours = ra != null ? TryToDouble(ra) : (double?)null;
-            var decDegVal = dec != null ? TryToDouble(dec) : (double?)null;
-
-            if (raHours.HasValue && decDegVal.HasValue) {
-                raDeg = raHours.Value * 15.0;
-                decDeg = decDegVal.Value;
-                return true;
-            }
-
-            error = "Could not read mount coordinates via TelescopeMediator (Coordinates/RA/Dec not found).";
-            return false;
-        }
-
-        private static double? TryToDouble(object v) {
-            if (v is double d) return d;
-            if (v is float f) return f;
-            if (v is int i) return i;
-            if (double.TryParse(v.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)) return parsed;
-            if (double.TryParse(v.ToString(), out parsed)) return parsed;
-            return null;
-        }
-
+        // ============================
+        // Secondary camera device list / connect
+        // ============================
         private void RefreshSecondaryCameraListSafe() {
             if (!importsReady) {
                 StatusText = "Not ready yet…";
@@ -1067,7 +1139,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             }
             RefreshSecondaryCameraList();
         }
-
 
         private void RefreshSecondaryCameraList() {
             SecondaryCameraDevices.Clear();
@@ -1154,11 +1225,9 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             }
         }
 
-        private async Task CaptureAndSolveAsync() {
-            UpdateMountConnectionState();
-            await CaptureAndSolveGuiderAsync(updateUi: true).ConfigureAwait(false);
-        }
-
+        // ============================
+        // Helpers: data conversion + coords parsing
+        // ============================
         private static ushort[] ConvertToUShortRowMajor(int[,] pixels, int width, int height) {
             var packed = new ushort[width * height];
             int idx = 0;
@@ -1183,28 +1252,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
             wb.Freeze();
             return wb;
-        }
-
-        private static double? ReadDouble(object obj, params string[] names) {
-            foreach (var n in names) {
-                var p = obj.GetType().GetProperty(n, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase);
-                if (p == null) continue;
-                var v = p.GetValue(obj);
-                if (v == null) continue;
-                if (double.TryParse(v.ToString(), out var d)) return d;
-            }
-            return null;
-        }
-
-        private static int? ReadInt(object obj, params string[] names) {
-            foreach (var n in names) {
-                var p = obj.GetType().GetProperty(n, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase);
-                if (p == null) continue;
-                var v = p.GetValue(obj);
-                if (v == null) continue;
-                if (int.TryParse(v.ToString(), out var i)) return i;
-            }
-            return null;
         }
 
         private static double GetRightAscensionHours(Coordinates c) {
@@ -1249,13 +1296,14 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             return double.TryParse(v.ToString(), out var parsed) ? parsed : 0.0;
         }
 
-        private static object? TryGetProp(object obj, string name) {
-            var p = obj.GetType().GetProperty(name, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase);
+        private static object? TryGetProp(object? obj, string name) {
+            if (obj == null) return null;
+            var p = obj.GetType().GetProperty(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
             return p?.GetValue(obj);
         }
 
         private static double? TryGetDoubleProp(object obj, string name) {
-            var p = obj.GetType().GetProperty(name, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase);
+            var p = obj.GetType().GetProperty(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
             if (p == null) return null;
 
             var v = p.GetValue(obj);
@@ -1268,88 +1316,493 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             return double.TryParse(v.ToString(), out var parsed) ? parsed : (double?)null;
         }
 
-        //DEBUG Helper:
+        private static bool TryCreateAngleFromDegrees(double deg, out Angle angle, out string why) {
+            angle = default;
+            why = "";
 
-        [System.Diagnostics.Conditional("DEBUG")]
-        private void DebugDumpMountBoolProperties(string reason) {
+            var t = typeof(Angle);
+            var rad = deg * Math.PI / 180.0;
+
             try {
-                Logger.Debug($"================ Mount BOOL dump ({reason}) ================");
+                // 1) Any public static method returning Angle with one double parameter
+                var factories = t.GetMethods(BindingFlags.Public | BindingFlags.Static)
+                    .Where(m => m.ReturnType == t)
+                    .Select(m => new { Method = m, Params = m.GetParameters() })
+                    .Where(x => x.Params.Length == 1 && x.Params[0].ParameterType == typeof(double))
+                    .ToList();
 
-                DumpBoolProps("TelescopeMediator", TelescopeMediator);
+                // Prefer methods with "deg", then "rad", then anything
+                foreach (var pref in new[] { "deg", "rad", "" }) {
+                    foreach (var f in factories) {
+                        var name = f.Method.Name.ToLowerInvariant();
+                        if (pref.Length > 0 && !name.Contains(pref)) continue;
 
-                var dev = TryGetProp(TelescopeMediator, "Device") ?? TryGetProp(TelescopeMediator, "Telescope");
-                DumpBoolProps("TelescopeMediator.Device", dev);
+                        var arg = name.Contains("rad") ? rad : deg;
 
-                var info = InvokeGetInfo(TelescopeMediator);
-                DumpBoolProps("TelescopeMediator.GetInfo()", info);
+                        try {
+                            angle = (Angle)f.Method.Invoke(null, new object[] { arg })!;
+                            return true;
+                        } catch {
+                            // keep trying
+                        }
+                    }
+                }
 
-                Logger.Debug("============================================================");
+                // 2) ctor(double)
+                var ctor1 = t.GetConstructor(new[] { typeof(double) });
+                if (ctor1 != null) {
+                    // try degrees first
+                    try { angle = (Angle)ctor1.Invoke(new object[] { deg }); return true; } catch { }
+                    // then radians
+                    try { angle = (Angle)ctor1.Invoke(new object[] { rad }); return true; } catch { }
+                }
+
+                // 3) ctor(double, enum unit)
+                var ctors = t.GetConstructors(BindingFlags.Public | BindingFlags.Instance);
+                foreach (var c in ctors) {
+                    var ps = c.GetParameters();
+                    if (ps.Length != 2) continue;
+                    if (ps[0].ParameterType != typeof(double)) continue;
+
+                    if (!ps[1].ParameterType.IsEnum) continue;
+
+                    var enumType = ps[1].ParameterType;
+                    var enumNames = Enum.GetNames(enumType);
+
+                    var degName = enumNames.FirstOrDefault(n => n.ToLowerInvariant().Contains("deg"));
+                    if (degName != null) {
+                        try {
+                            var unit = Enum.Parse(enumType, degName);
+                            angle = (Angle)c.Invoke(new object[] { deg, unit })!;
+                            return true;
+                        } catch { }
+                    }
+
+                    var radName = enumNames.FirstOrDefault(n => n.ToLowerInvariant().Contains("rad"));
+                    if (radName != null) {
+                        try {
+                            var unit = Enum.Parse(enumType, radName);
+                            angle = (Angle)c.Invoke(new object[] { rad, unit })!;
+                            return true;
+                        } catch { }
+                    }
+                }
+
+                why = "No usable Angle factory/ctor found in this NINA build.";
+                return false;
+
             } catch (Exception ex) {
-                Logger.Debug($"[Mount BOOL dump] failed: {ex}");
+                why = ex.Message;
+                return false;
             }
         }
 
-        private void DumpBoolProps(string label, object? obj) {
-            if (obj == null) {
-                Logger.Debug($"{label}: <null>");
+        /// <summary>
+        /// Safe Coordinates builder (never throws).
+        /// </summary>
+        private bool TryToCoordinates(double raDeg, double decDeg, out Coordinates coords) {
+            coords = default;
+
+            if (!TryCreateAngleFromDegrees(raDeg, out var ra, out var whyRa)) {
+                StatusText = "Cannot build Coordinates (Angle API mismatch) ❌";
+                DetailsText = $"Angle(RA) creation failed.\n{whyRa}";
+                return false;
+            }
+
+            if (!TryCreateAngleFromDegrees(decDeg, out var dec, out var whyDec)) {
+                StatusText = "Cannot build Coordinates (Angle API mismatch) ❌";
+                DetailsText = $"Angle(Dec) creation failed.\n{whyDec}";
+                return false;
+            }
+
+            try {
+                // Try (Angle, Angle, Epoch)
+                var ctor3 = typeof(Coordinates).GetConstructor(new[] { typeof(Angle), typeof(Angle), typeof(Epoch) });
+                if (ctor3 != null) {
+                    coords = (Coordinates)ctor3.Invoke(new object[] { ra, dec, Epoch.J2000 })!;
+                    return true;
+                }
+
+                // Fallback: (Angle, Angle)
+                var ctor2 = typeof(Coordinates).GetConstructor(new[] { typeof(Angle), typeof(Angle) });
+                if (ctor2 != null) {
+                    coords = (Coordinates)ctor2.Invoke(new object[] { ra, dec })!;
+                    return true;
+                }
+
+                StatusText = "Cannot build Coordinates (ctor missing) ❌";
+                DetailsText = "No Coordinates ctor found for (Angle, Angle[, Epoch]).";
+                return false;
+
+            } catch (Exception ex) {
+                StatusText = "Cannot build Coordinates ❌";
+                DetailsText = ex.ToString();
+                return false;
+            }
+        }
+
+
+    
+        private static object? TryCreateAngleFromHours(Type angleType, double hours) {
+            try {
+                // look for static FromHours(double)
+                var mi = angleType.GetMethod("FromHours", BindingFlags.Public | BindingFlags.Static);
+                if (mi != null && mi.GetParameters().Length == 1 && mi.GetParameters()[0].ParameterType == typeof(double)) {
+                    return mi.Invoke(null, new object[] { hours });
+                }
+
+                // try ctor(double) (assuming hours)
+                var ctor = angleType.GetConstructor(new[] { typeof(double) });
+                if (ctor != null) return ctor.Invoke(new object[] { hours });
+
+                return null;
+            } catch {
+                return null;
+            }
+        }
+
+   
+
+        private static async Task<bool> TryInvokeAsync(MethodInfo mi, object target, object?[] args) {
+            try {
+                var res = mi.Invoke(target, args);
+
+                if (res is Task t) {
+                    await t.ConfigureAwait(false);
+                    return true;
+                }
+
+                // non-task method invoked successfully
+                return true;
+            } catch {
+                return false;
+            }
+        }
+        private (bool? connected, bool? parked, bool? tracking, bool? slewing, double? raDeg, double? decDeg) ReadMountSnapshot() {
+            object obj = TelescopeMediator!;
+            var dev = TryGetProp(obj, "Device") ?? TryGetProp(obj, "Telescope");
+            if (dev != null) obj = dev;
+
+            bool? GetBool(string name) => TryGetProp(obj, name) as bool?;
+            double? GetDouble(string name) {
+                var v = TryGetProp(obj, name);
+                if (v is double d) return d;
+                if (v is float f) return f;
+                if (v is int i) return i;
+                return null;
+            }
+
+            // typical ASCOM-ish names:
+            var connected = GetBool("Connected") ?? GetBool("IsConnected");
+            var parked = GetBool("AtPark") ?? GetBool("Parked") ?? GetBool("IsParked");
+            var tracking = GetBool("Tracking") ?? GetBool("IsTracking");
+            var slewing = GetBool("Slewing") ?? GetBool("IsSlewing");
+
+            // many drivers expose RA in hours and Dec in degrees
+            var raHours = GetDouble("RightAscension") ?? GetDouble("RA");
+            var dec = GetDouble("Declination") ?? GetDouble("Dec");
+
+            double? raDeg = raHours.HasValue ? raHours.Value * 15.0 : (double?)null;
+            double? decDeg = dec;
+
+            return (connected, parked, tracking, slewing, raDeg, decDeg);
+        }
+
+        // =====================================
+        // Center Platesolving
+        // =====================================
+
+        private async Task CenterWithSecondaryAsync(double thresholdArcmin, int maxAttempts, CancellationToken ct) {
+            UpdateMountConnectionState();
+
+            if (!IsMountConnected) {
+                StatusText = "Mount not connected ❌";
+                DetailsText = "Connect the telescope/mount in NINA first.";
                 return;
             }
 
-            Logger.Debug($"{label}: {obj.GetType().FullName}");
+            if (!IsSecondaryConnected) {
+                StatusText = "Secondary camera not connected ❌";
+                DetailsText = "Click Connect first.";
+                return;
+            }
 
-            try {
-                var props = obj.GetType().GetProperties(
-                    System.Reflection.BindingFlags.Public |
-                    System.Reflection.BindingFlags.Instance);
+            var useOffset = OffsetEnabled && HasOffsetSet && PluginSettings?.Settings != null;
 
-                foreach (var p in props) {
-                    if (p.PropertyType != typeof(bool)) continue;
+            // 1) First solve defines the "desired" sky position (guider sky -> desired main sky)
+            StatusText = "Centering: initial capture/solve…";
+            DetailsText = $"Threshold={thresholdArcmin:0.###} arcmin, MaxAttempts={maxAttempts}";
 
-                    bool value;
-                    try {
-                        value = (bool)p.GetValue(obj)!;
-                    } catch {
-                        Logger.Debug($"  {p.Name} = <exception>");
-                        continue;
-                    }
+            var first = await CaptureAndSolveGuiderAsync(updateUi: true).ConfigureAwait(false);
+            if (!first.success) return;
 
-                    Logger.Debug($"  {p.Name} = {value}");
+            lastGuiderSolveDeg = (first.raDeg, first.decDeg);
+            LastGuiderSolveText = FormatSolvedLine("Guider", first.raDeg, first.decDeg);
+
+            var desiredMain = useOffset ? MapGuiderToMain(first.raDeg, first.decDeg) : (first.raDeg, first.decDeg);
+
+            lastCorrectedSolveDeg = useOffset ? desiredMain : (ValueTuple<double, double>?)null;
+            CorrectedSolveText = FormatSolvedLine("Desired(main)", desiredMain.raDeg, desiredMain.decDeg);
+
+            // 2) Iterative loop like NINA CenteringSolver
+            for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+                ct.ThrowIfCancellationRequested();
+
+                StatusText = $"Centering: attempt {attempt}/{maxAttempts} – solving…";
+                DetailsText = $"Desired(main): RA={desiredMain.raDeg:0.######}°, Dec={desiredMain.decDeg:0.######}°";
+
+                var cur = await CaptureAndSolveGuiderAsync(updateUi: true).ConfigureAwait(false);
+                if (!cur.success) return;
+
+                lastGuiderSolveDeg = (cur.raDeg, cur.decDeg);
+                LastGuiderSolveText = FormatSolvedLine("Guider", cur.raDeg, cur.decDeg);
+
+                // Estimate current MAIN sky using guider solve + offset model (or passthrough)
+                var solvedMain = useOffset ? MapGuiderToMain(cur.raDeg, cur.decDeg) : (cur.raDeg, cur.decDeg);
+
+                var errArcmin = SeparationArcmin(
+                    solvedMain.raDeg, solvedMain.decDeg,
+                    desiredMain.raDeg, desiredMain.decDeg);
+
+                CorrectedSolveText =
+                    $"{FormatSolvedLine("Solved(main)", solvedMain.raDeg, solvedMain.decDeg)}\n" +
+                    $"Error: {errArcmin:0.###} arcmin (threshold {thresholdArcmin:0.###})";
+
+                if (errArcmin <= thresholdArcmin) {
+                    StatusText = "Centering done ✅";
+                    DetailsText = $"Reached threshold: {errArcmin:0.###} arcmin ≤ {thresholdArcmin:0.###}";
+                    return;
                 }
-            } catch (Exception ex) {
-                Logger.Debug($"  <error reading properties>: {ex.Message}");
+
+                // --- NINA-style: try Sync to solved position; if Sync fails, compute offset and apply to target ---
+                bool syncOk = false;
+                try {
+                    if (!TryToCoordinates(solvedMain.raDeg, solvedMain.decDeg, out var solvedCoords)) return;
+
+                    StatusText = $"Centering: attempt {attempt}/{maxAttempts} – syncing…";
+                    DetailsText = $"SyncTo(main): RA={solvedMain.raDeg:0.######}°, Dec={solvedMain.decDeg:0.######}°";
+
+                    syncOk = await TelescopeMediator!.Sync(solvedCoords).ConfigureAwait(false);
+                } catch {
+                    syncOk = false;
+                }
+
+                double slewRa;
+                double slewDec;
+
+                if (syncOk) {
+                    // If sync worked: slew directly to desired target
+                    slewRa = desiredMain.raDeg;
+                    slewDec = desiredMain.decDeg;
+
+                    StatusText = $"Centering: attempt {attempt}/{maxAttempts} – slewing…";
+                    DetailsText = $"Sync OK. SlewTo(main target): RA={slewRa:0.######}°, Dec={slewDec:0.######}°";
+                } else {
+                    // Sync failed: compute pointing offset like CenteringSolver and slew to (target + offset)
+                    var deltaRa = NormalizeDeltaDeg(desiredMain.raDeg - solvedMain.raDeg);
+                    var deltaDec = desiredMain.decDeg - solvedMain.decDeg;
+
+                    slewRa = NormalizeRaDeg(desiredMain.raDeg + deltaRa);
+                    slewDec = Math.Max(-90.0, Math.Min(90.0, desiredMain.decDeg + deltaDec));
+
+                    StatusText = $"Centering: attempt {attempt}/{maxAttempts} – slewing…";
+                    DetailsText =
+                        $"Sync failed → using offset correction.\n" +
+                        $"OffsetΔ: dRA={deltaRa:0.######}°, dDec={deltaDec:0.######}°\n" +
+                        $"SlewTo(main): RA={slewRa:0.######}°, Dec={slewDec:0.######}°";
+                }
+
+                if (!TryToCoordinates(slewRa, slewDec, out var slewCoords2)) return;
+
+                await TelescopeMediator!.SlewToCoordinatesAsync(slewCoords2, ct).ConfigureAwait(false);
             }
+
+            StatusText = "Centering not reached ⚠️";
+            DetailsText = $"Max attempts ({maxAttempts}) reached. Consider increasing threshold or improving offset calibration.";
         }
 
-        [System.Diagnostics.Conditional("DEBUG")]
-        private void DebugDumpMountRaDecFromInfo() {
-            var info = InvokeGetInfo(TelescopeMediator);
-            if (info == null) { Logger.Debug("[Mount RA/Dec dump] GetInfo() is null"); return; }
 
-            Logger.Debug($"[Mount RA/Dec dump] GetInfo type: {info.GetType().FullName}");
+        private async Task CenterWithSecondaryAsync(double thresholdArcmin = 1.0, int maxAttempts = 5) {
+            UpdateMountConnectionState();
 
-            DumpAnyProp(info, "RightAscension");
-            DumpAnyProp(info, "RA");
-            DumpAnyProp(info, "Declination");
-            DumpAnyProp(info, "Dec");
-            DumpAnyProp(info, "Coordinates");
-            DumpAnyProp(info, "TargetCoordinates");
+            if (!IsMountConnected) {
+                StatusText = "Mount not connected ❌";
+                DetailsText = "Connect the telescope/mount in NINA first.";
+                return;
+            }
+
+            if (!IsSecondaryConnected) {
+                StatusText = "Secondary camera not connected ❌";
+                DetailsText = "Click Connect first.";
+                return;
+            }
+
+            // 1) First solve defines the "desired" sky position (guider sky)
+            StatusText = "Centering: initial capture/solve…";
+            DetailsText = $"Threshold={thresholdArcmin:0.###} arcmin, MaxAttempts={maxAttempts}";
+
+            var first = await CaptureAndSolveGuiderAsync(updateUi: true).ConfigureAwait(false);
+            if (!first.success) return;
+
+            lastGuiderSolveDeg = (first.raDeg, first.decDeg);
+            LastGuiderSolveText = FormatSolvedLine("Guider", first.raDeg, first.decDeg);
+
+            // Desired MAIN sky position (fixed for the whole centering run)
+            var useOffset = OffsetEnabled && HasOffsetSet && PluginSettings?.Settings != null;
+
+            var desiredMain = useOffset
+                ? MapGuiderToMain(first.raDeg, first.decDeg)
+                : (first.raDeg, first.decDeg);
+
+            // Show corrected preview line
+            lastCorrectedSolveDeg = useOffset ? desiredMain : (ValueTuple<double, double>?)null;
+
+            CorrectedSolveText = FormatSolvedLine("Desired(main)", desiredMain.raDeg, desiredMain.decDeg);
+
+
+            // 2) Iterative loop like NINA CenteringSolver
+            for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+
+                StatusText = $"Centering: attempt {attempt}/{maxAttempts} – solving…";
+                DetailsText = $"Desired(main): RA={desiredMain.raDeg:0.######}°, Dec={desiredMain.decDeg:0.######}°";
+
+                var cur = await CaptureAndSolveGuiderAsync(updateUi: true).ConfigureAwait(false);
+                if (!cur.success) return;
+
+                lastGuiderSolveDeg = (cur.raDeg, cur.decDeg);
+                LastGuiderSolveText = FormatSolvedLine("Guider", cur.raDeg, cur.decDeg);
+
+                // Estimate current MAIN sky using guider solve + offset model
+                var solvedMain = MapGuiderToMain(cur.raDeg, cur.decDeg);
+
+                var errArcmin = SeparationArcmin(solvedMain.raDeg, solvedMain.decDeg, desiredMain.raDeg, desiredMain.decDeg);
+
+                CorrectedSolveText =
+                    $"{FormatSolvedLine("Solved(main)", solvedMain.raDeg, solvedMain.decDeg)}\n" +
+                    $"Error: {errArcmin:0.###} arcmin (threshold {thresholdArcmin:0.###})";
+
+                if (errArcmin <= thresholdArcmin) {
+                    StatusText = "Centering done ✅";
+                    DetailsText = $"Reached threshold: {errArcmin:0.###} arcmin ≤ {thresholdArcmin:0.###}";
+                    return;
+                }
+
+                // NINA-style correction: slew to (desired + (desired - solved))
+                // Equivalent: apply pointing error again to compensate mount model error.
+                var deltaRa = NormalizeDeltaDeg(desiredMain.raDeg - solvedMain.raDeg);
+                var deltaDec = desiredMain.decDeg - solvedMain.decDeg;
+
+                var slewRa = NormalizeRaDeg(desiredMain.raDeg + deltaRa);
+                var slewDec = Math.Max(-90.0, Math.Min(90.0, desiredMain.decDeg + deltaDec));
+
+                StatusText = $"Centering: attempt {attempt}/{maxAttempts} – slewing…";
+                DetailsText =
+                    $"Error={errArcmin:0.###} arcmin\n" +
+                    $"SlewTo(main): RA={slewRa:0.######}°, Dec={slewDec:0.######}°";
+
+                if (!TryToCoordinates(slewRa, slewDec, out var slewCoords)) {
+                    // TryToCoordinates updates Status/Details itself
+                    return;
+                }
+
+                await TelescopeMediator!.SlewToCoordinatesAsync(slewCoords, CancellationToken.None);
+            }
+
+            StatusText = "Centering not reached ⚠️";
+            DetailsText = $"Max attempts ({maxAttempts}) reached. Consider increasing threshold or improving offset calibration.";
         }
 
-        private void DumpAnyProp(object src, string name) {
+
+        // Platesolve Center Helper
+
+        private static double NormalizeDeltaDeg(double deltaDeg) {
+            // wrap to [-180, +180)
+            deltaDeg %= 360.0;
+            if (deltaDeg >= 180.0) deltaDeg -= 360.0;
+            if (deltaDeg < -180.0) deltaDeg += 360.0;
+            return deltaDeg;
+        }
+
+        private static double NormalizeRaDeg(double raDeg) {
+            raDeg %= 360.0;
+            if (raDeg < 0) raDeg += 360.0;
+            return raDeg;
+        }
+
+        private static double SeparationArcmin(double ra1Deg, double dec1Deg, double ra2Deg, double dec2Deg) {
+            // small-angle approx (good for centering errors)
+            var dRa = NormalizeDeltaDeg(ra2Deg - ra1Deg);
+            var dDec = dec2Deg - dec1Deg;
+
+            var decMidRad = ((dec1Deg + dec2Deg) * 0.5) * Math.PI / 180.0;
+
+            var x = dRa * Math.Cos(decMidRad);
+            var y = dDec;
+
+            var sepDeg = Math.Sqrt(x * x + y * y);
+            return sepDeg * 60.0;
+        }
+
+        private (double raDeg, double decDeg) MapGuiderToMain(double guiderRaDeg, double guiderDecDeg) {
+            // If offset enabled+set => convert guider-sky coords to main-sky coords
+            // else passthrough (useful for testing without offset)
+            if (!OffsetEnabled || !HasOffsetSet || PluginSettings?.Settings == null) {
+                return (guiderRaDeg, guiderDecDeg);
+            }
+
+            var svc = new OffsetService();
+            return svc.ApplyToGuiderSolve(PluginSettings.Settings, guiderRaDeg, guiderDecDeg);
+        }
+
+
+#if DEBUG
+        private static void DebugDumpSyncSlewMethods(string label, object obj) {
             try {
-                var p = src.GetType().GetProperty(name,
-                    System.Reflection.BindingFlags.Instance |
-                    System.Reflection.BindingFlags.Public |
-                    System.Reflection.BindingFlags.NonPublic |
-                    System.Reflection.BindingFlags.IgnoreCase);
-                if (p == null) { Logger.Debug($"  {name}: <no prop>"); return; }
+                Logger.Debug($"===== Sync/Slew methods dump ({label}) :: {obj.GetType().FullName} =====");
 
-                var v = p.GetValue(src);
-                Logger.Debug($"  {name}: {(v == null ? "<null>" : v.GetType().FullName + " = " + v)}");
+                var ms = obj.GetType().GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                    .Where(m =>
+                        m.Name.IndexOf("sync", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        m.Name.IndexOf("slew", StringComparison.OrdinalIgnoreCase) >= 0)
+                    .OrderBy(m => m.Name)
+                    .ToArray();
+
+                foreach (var m in ms) {
+                    var ps = m.GetParameters();
+                    var sig = string.Join(", ", ps.Select(p => $"{p.ParameterType.Name} {p.Name}"));
+                    Logger.Debug($"  {m.Name}({sig}) : {m.ReturnType.Name}");
+                }
+
+                Logger.Debug("============================================================");
             } catch (Exception ex) {
-                Logger.Debug($"  {name}: <exception> {ex.Message}");
+                Logger.Debug($"[DebugDumpSyncSlewMethods] failed: {ex}");
             }
         }
+
+        private async Task<bool> VerifyMountMovementAsync() {
+            try {
+                // Snapshot 1
+                var a1 = ReadMountSnapshot();
+
+                // wait a bit
+                await Task.Delay(1500).ConfigureAwait(false);
+
+                // Snapshot 2
+                var a2 = ReadMountSnapshot();
+
+                // movement heuristics: Slewing flag OR coords changed noticeably
+                if (a2.slewing == true) return true;
+
+                if (a1.raDeg.HasValue && a2.raDeg.HasValue && Math.Abs(a2.raDeg.Value - a1.raDeg.Value) > 0.01) return true;
+                if (a1.decDeg.HasValue && a2.decDeg.HasValue && Math.Abs(a2.decDeg.Value - a1.decDeg.Value) > 0.01) return true;
+
+                return false;
+            } catch {
+                return false;
+            }
+        }
+
+#endif
 
     }
 }
