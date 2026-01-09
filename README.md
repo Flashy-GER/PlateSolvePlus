@@ -9,6 +9,18 @@ das Plate Solving und Centering **über eine zweite Kamera (z. B. Guiding-Kamera
 
 ---
 
+## 📘 Dokumentation
+
+Eine ausführliche Schritt-für-Schritt-Anleitung und eine FAQ findest du in der separaten Dokumentation:
+
+- **[Dokumentationsübersicht](docu/README.md)**  
+- **[Setup & Erste Schritte](docu/SETUP.md)**  
+- **[FAQ & Troubleshooting](docu/FAQ.md)**
+
+👉 Empfohlener Einstieg für neue Nutzer: **SETUP.md**
+
+---
+
 ## 🧭 Wann brauche ich PlateSolvePlus?
 
 PlateSolvePlus ist besonders hilfreich, wenn:
