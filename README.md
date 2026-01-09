@@ -91,7 +91,7 @@ Da Guide- und Hauptteleskop meist **nicht exakt parallel** montiert sind, nutzt 
 
 ## 🎯 Bedienung im Imaging-Tab
 
-PlateSolvePlus bringt ein eigenes Dockable mit drei Hauptaktionen:
+PlateSolvePlus bringt eine eigene View mit drei Hauptaktionen:
 
 ### ▶️ Capture
 - Nimmt ein Bild mit der Secondary Camera auf
