@@ -13,9 +13,9 @@ das Plate Solving und Centering **über eine zweite Kamera (z. B. Guiding-Kamera
 
 Eine ausführliche Schritt-für-Schritt-Anleitung und eine FAQ findest du in der separaten Dokumentation:
 
-- **[Dokumentationsübersicht](docu/README.md)**  
-- **[Setup & Erste Schritte](docu/SETUP.md)**  
-- **[FAQ & Troubleshooting](docu/FAQ.md)**
+- **[Dokumentationsübersicht](Docu/README.md)**  
+- **[Setup & Erste Schritte](Docu/SETUP.md)**  
+- **[FAQ & Troubleshooting](Docu/FAQ.md)**
 
 👉 Empfohlener Einstieg für neue Nutzer: **SETUP.md**
 
