@@ -2,16 +2,30 @@
   <PropertyGroup>
     <TargetFramework>net8.0-windows</TargetFramework>
     <OutputType>Library</OutputType>
+
     <RootNamespace>NINA.Plugins.PlateSolvePlus</RootNamespace>
     <AssemblyName>PlateSolvePlus</AssemblyName>
-    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+
     <UseWPF>true</UseWPF>
     <ImportWindowsDesktopTargets>true</ImportWindowsDesktopTargets>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
+
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
   </PropertyGroup>
+
   <ItemGroup>
+    <PackageReference Include="EmbedIO" Version="3.5.2" />
     <PackageReference Include="NINA.Plugin" Version="3.2.0.9001" />
+
+
+	  <!-- optional in eine DLL zusammenführen  
+	<PackageReference Include="Fody" Version="6.8.0" PrivateAssets="all" />
+    <PackageReference Include="Costura.Fody" Version="5.7.0" PrivateAssets="all" />
+	-->
   </ItemGroup>
+
   <ItemGroup>
     <Compile Update="Properties\Resources.Designer.cs">
       <DesignTime>True</DesignTime>
@@ -24,23 +38,47 @@
       <DependentUpon>Settings.Settings</DependentUpon>
     </Compile>
   </ItemGroup>
+
   <ItemGroup>
     <None Update="Properties\Settings.Settings">
       <Generator>SettingsSingleFileGenerator</Generator>
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>
     </None>
   </ItemGroup>
+
   <ItemGroup>
     <EmbeddedResource Update="Properties\Resources.resx">
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
     </EmbeddedResource>
   </ItemGroup>
+
   <ItemGroup>
     <Folder Include="Docu\Pics\" />
   </ItemGroup>
-	<PropertyGroup />
-	<Target Name="PostBuild" AfterTargets="PostBuildEvent">
-		<Exec Command="&#xD;&#xA;if not exist &quot;%25localappdata%25\NINA\Plugins\3.0.0&quot; (&#xD;&#xA;  echo Creating Plugins folder&#xD;&#xA;  mkdir &quot;%25localappdata%25\NINA\Plugins\3.0.0&quot;&#xD;&#xA;)&#xD;&#xA;if not exist &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)&quot; (&#xD;&#xA;  echo Creating Plugin folder: $(TargetName)&#xD;&#xA;  mkdir &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)&quot;&#xD;&#xA;)&#xD;&#xA;&#xD;&#xA;echo Copying $(TargetFileName) to NINA plugin folder&#xD;&#xA;xcopy &quot;$(TargetPath)&quot; &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)\&quot; /y /i" />
-</Target>
+
+	<Target Name="PostBuild" AfterTargets="Build">
+		<PropertyGroup>
+			<_NinaPluginDir>$([System.Environment]::GetFolderPath(SpecialFolder.LocalApplicationData))\NINA\Plugins\3.0.0\$(TargetName)\</_NinaPluginDir>
+		</PropertyGroup>
+
+		<MakeDir Directories="$(_NinaPluginDir)" />
+
+		<!-- Always copy the main plugin DLL -->
+		<Copy SourceFiles="$(TargetPath)"
+			  DestinationFolder="$(_NinaPluginDir)"
+			  SkipUnchangedFiles="false" />
+
+		<!-- Copy EmbedIO + Swan (if present in output) -->
+		<Copy SourceFiles="$(TargetDir)EmbedIO.dll"
+			  DestinationFolder="$(_NinaPluginDir)"
+			  Condition="Exists('$(TargetDir)EmbedIO.dll')"
+			  SkipUnchangedFiles="false" />
+
+		<Copy SourceFiles="$(TargetDir)Swan.Lite.dll"
+			  DestinationFolder="$(_NinaPluginDir)"
+			  Condition="Exists('$(TargetDir)Swan.Lite.dll')"
+			  SkipUnchangedFiles="false" />
+	</Target>
+
 </Project>

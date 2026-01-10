@@ -234,5 +234,38 @@ namespace NINA.Plugins.PlateSolvePlus {
 
             OffsetLastCalibratedUtc = null;
         }
+
+        // =========================
+        // Local WEB API settings
+        // =========================
+        private bool apiEnabled = false;
+        public bool ApiEnabled {
+            get => apiEnabled;
+            set { if (apiEnabled == value) return; apiEnabled = value; OnPropertyChanged(nameof(ApiEnabled)); }
+        }
+
+        private int apiPort = 1899;
+        public int ApiPort {
+            get => apiPort;
+            set {
+                var v = value < 1024 ? 1899 : value; // keep it sane
+                if (apiPort == v) return;
+                apiPort = v;
+                OnPropertyChanged(nameof(ApiPort));
+            }
+        }
+
+        private bool apiRequireToken = false;
+        public bool ApiRequireToken {
+            get => apiRequireToken;
+            set { if (apiRequireToken == value) return; apiRequireToken = value; OnPropertyChanged(nameof(ApiRequireToken)); }
+        }
+
+        private string? apiToken;
+        public string? ApiToken {
+            get => apiToken;
+            set { if (string.Equals(apiToken, value, StringComparison.Ordinal)) return; apiToken = value; OnPropertyChanged(nameof(ApiToken)); }
+        }
+
     }
 }

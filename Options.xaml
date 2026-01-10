@@ -4,205 +4,172 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <DataTemplate x:Key="PlateSolvePlus_Options">
-
         <ScrollViewer VerticalScrollBarVisibility="Auto">
-            <StackPanel Orientation="Vertical" Margin="10" Width="520">
+            <StackPanel Orientation="Vertical"
+                        Margin="10"
+                        HorizontalAlignment="Left">
 
+                <!-- Header -->
                 <TextBlock Text="PlateSolvePlus – Guide Scope Plate Solving"
                            FontSize="16"
                            FontWeight="SemiBold"
                            Margin="0,0,0,12"/>
 
+                <!-- ================================================= -->
                 <!-- Guider Capture -->
+                <!-- ================================================= -->
                 <GroupBox Header="Guider Capture" Margin="0,0,0,10">
-                    <Grid Margin="10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="220"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
+                    <StackPanel Margin="10">
 
-                        <TextBlock Text="Exposure (sec)" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center"/>
-                        <TextBox Text="{Binding Settings.GuideExposureSeconds, UpdateSourceTrigger=PropertyChanged}"
-                                 Grid.Row="0" Grid.Column="1"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <TextBlock Text="Exposure (s)"
+                                       Width="220"
+                                       VerticalAlignment="Center"/>
+                            <TextBox Width="120"
+                                     Text="{Binding Settings.GuideExposureSeconds}" />
+                        </StackPanel>
 
-                        <TextBlock Text="Gain (-1 = Auto)" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center"/>
-                        <TextBox Text="{Binding Settings.GuideGain, UpdateSourceTrigger=PropertyChanged}"
-                                 Grid.Row="1" Grid.Column="1"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <TextBlock Text="Gain"
+                                       Width="220"
+                                       VerticalAlignment="Center"/>
+                            <TextBox Width="120"
+                                     Text="{Binding Settings.GuideGain}" />
+                        </StackPanel>
 
-                        <TextBlock Text="Binning" Grid.Row="2" Grid.Column="0" VerticalAlignment="Center"/>
-                        <TextBox Text="{Binding Settings.GuideBinning, UpdateSourceTrigger=PropertyChanged}"
-                                 Grid.Row="2" Grid.Column="1"/>
-                    </Grid>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Binning"
+                                       Width="220"
+                                       VerticalAlignment="Center"/>
+                            <TextBox Width="120"
+                                     Text="{Binding Settings.GuideBinning}" />
+                        </StackPanel>
+
+                    </StackPanel>
                 </GroupBox>
 
-                <!-- Optics -->
-                <GroupBox Header="Optics / Image Scale" Margin="0,0,0,10">
-                    <Grid Margin="10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="220"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
+                <!-- ================================================= -->
+                <!-- Optics / Scale -->
+                <!-- ================================================= -->
+                <GroupBox Header="Optics / Scale" Margin="0,0,0,10">
+                    <StackPanel Margin="10">
 
-                        <TextBlock Text="Focal Length (mm)" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center"/>
-                        <TextBox Text="{Binding Settings.GuideFocalLengthMm, UpdateSourceTrigger=PropertyChanged}"
-                                 Grid.Row="0" Grid.Column="1"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <TextBlock Text="Focal Length (mm)"
+                                       Width="220"
+                                       VerticalAlignment="Center"/>
+                            <TextBox Width="120"
+                                     Text="{Binding Settings.GuideFocalLengthMm}" />
+                        </StackPanel>
 
-                        <TextBlock Text="Use Camera Pixel Size" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center"/>
-                        <CheckBox IsChecked="{Binding Settings.UseCameraPixelSize}" Grid.Row="1" Grid.Column="1"/>
+                        <CheckBox Content="Use camera pixel size"
+                                  IsChecked="{Binding Settings.UseCameraPixelSize}"
+                                  Margin="0,4,0,4"/>
 
-                        <TextBlock Text="Pixel Size (µm)" Grid.Row="2" Grid.Column="0" VerticalAlignment="Center"/>
-                        <TextBox Text="{Binding Settings.GuidePixelSizeUm, UpdateSourceTrigger=PropertyChanged}"
-                                 Grid.Row="2" Grid.Column="1"/>
-                    </Grid>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Pixel Size (µm)"
+                                       Width="220"
+                                       VerticalAlignment="Center"/>
+                            <TextBox Width="120"
+                                     Text="{Binding Settings.GuidePixelSizeUm}" />
+                        </StackPanel>
+
+                    </StackPanel>
                 </GroupBox>
 
+                <!-- ================================================= -->
                 <!-- Solver -->
-                <GroupBox Header="Plate Solver" Margin="0,0,0,10">
-                    <Grid Margin="10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="220"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
+                <!-- ================================================= -->
+                <GroupBox Header="Solver" Margin="0,0,0,10">
+                    <StackPanel Margin="10">
 
-                        <TextBlock Text="Search Radius (deg)" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center"/>
-                        <TextBox Text="{Binding Settings.SolverSearchRadiusDeg, UpdateSourceTrigger=PropertyChanged}"
-                                 Grid.Row="0" Grid.Column="1"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <TextBlock Text="Search Radius (°)"
+                                       Width="220"
+                                       VerticalAlignment="Center"/>
+                            <TextBox Width="120"
+                                     Text="{Binding Settings.SolverSearchRadiusDeg}" />
+                        </StackPanel>
 
-                        <TextBlock Text="Downsample" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center"/>
-                        <TextBox Text="{Binding Settings.SolverDownsample, UpdateSourceTrigger=PropertyChanged}"
-                                 Grid.Row="1" Grid.Column="1"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <TextBlock Text="Downsample"
+                                       Width="220"
+                                       VerticalAlignment="Center"/>
+                            <TextBox Width="120"
+                                     Text="{Binding Settings.SolverDownsample}" />
+                        </StackPanel>
 
-                        <TextBlock Text="Timeout (sec)" Grid.Row="2" Grid.Column="0" VerticalAlignment="Center"/>
-                        <TextBox Text="{Binding Settings.SolverTimeoutSec, UpdateSourceTrigger=PropertyChanged}"
-                                 Grid.Row="2" Grid.Column="1"/>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Timeout (s)"
+                                       Width="220"
+                                       VerticalAlignment="Center"/>
+                            <TextBox Width="120"
+                                     Text="{Binding Settings.SolverTimeoutSec}" />
+                        </StackPanel>
 
-                        <TextBlock Text="Centering Threshold (arcmin)" Grid.Row="3" Grid.Column="0" VerticalAlignment="Center"/>
-                        <TextBox Text="{Binding Settings.CenteringThresholdArcmin, UpdateSourceTrigger=PropertyChanged}"
-                                 Grid.Row="3" Grid.Column="1"/>
-
-                        <TextBlock Text="Max Centering Attempts" Grid.Row="4" Grid.Column="0" VerticalAlignment="Center"/>
-                        <TextBox Text="{Binding Settings.CenteringMaxAttempts, UpdateSourceTrigger=PropertyChanged}"
-                                 Grid.Row="4" Grid.Column="1"/>
-                    </Grid>
+                    </StackPanel>
                 </GroupBox>
 
-<!-- Offset -->
-<GroupBox Header="Offset" Margin="0,0,0,10">
-    <StackPanel Margin="10">
+                <!-- ================================================= -->
+                <!-- Offset -->
+                <!-- ================================================= -->
+                <GroupBox Header="Offset" Margin="0,0,0,10">
+                    <StackPanel Margin="10">
 
-        <CheckBox Content="Offset verwenden"
-                  IsChecked="{Binding Settings.OffsetEnabled}"
-                  Margin="0,0,0,8"/>
+                        <CheckBox Content="Offset verwenden"
+                                  IsChecked="{Binding Settings.OffsetEnabled}"
+                                  Margin="0,0,0,6"/>
 
-        <TextBlock Text="Mode" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <TextBlock Text="Mode"
+                                       Width="220"
+                                       VerticalAlignment="Center"/>
+                            <ComboBox Width="160"
+                                      SelectedIndex="{Binding Settings.OffsetModeInt}">
+                                <ComboBoxItem Content="Rotation"/>
+                                <ComboBoxItem Content="Arcsec"/>
+                            </ComboBox>
+                        </StackPanel>
 
-        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-            <RadioButton Content="Rotation (Quaternion)"
-                         GroupName="OffsetMode"
-                         IsChecked="{Binding IsRotationMode}"
-                         Margin="0,0,18,0"/>
-            <RadioButton Content="Arcsec (ΔRA/ΔDec)"
-                         GroupName="OffsetMode"
-                         IsChecked="{Binding IsArcsecMode}"/>
-        </StackPanel>
+                    </StackPanel>
+                </GroupBox>
 
-        <Button Content="Delete Offset"
-                Command="{Binding ResetOffsetCommand}"
-                Width="140"/>
-    </StackPanel>
-</GroupBox>
+                <!-- ================================================= -->
+                <!-- Touch-N-Stars / Local API -->
+                <!-- ================================================= -->
+                <GroupBox Header="Touch-N-Stars / Local API" Margin="0,0,0,10">
+                    <StackPanel Margin="10">
 
-<!-- Quaternion -->
-<GroupBox Header="Rotation Offset (Quaternion)" Margin="0,0,0,10">
-    <GroupBox.Style>
-        <Style TargetType="GroupBox">
-            <Setter Property="Visibility" Value="Visible"/>
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding IsRotationMode}" Value="False">
-                    <Setter Property="Visibility" Value="Collapsed"/>
-                </DataTrigger>
-            </Style.Triggers>
-        </Style>
-    </GroupBox.Style>
+                        <CheckBox Content="Local API aktivieren (localhost)"
+                                  IsChecked="{Binding Settings.ApiEnabled}" />
 
-    <Grid Margin="10">
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="120"/>
-            <ColumnDefinition Width="*"/>
-        </Grid.ColumnDefinitions>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <TextBlock Text="Port"
+                                       Width="220"
+                                       VerticalAlignment="Center"/>
+                            <TextBox Width="120"
+                                     Text="{Binding Settings.ApiPort,
+                                                    UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
 
-        <TextBlock Text="Qw" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center"/>
-        <TextBox Text="{Binding Settings.RotationQw, UpdateSourceTrigger=PropertyChanged}" Grid.Row="0" Grid.Column="1"/>
+                        <CheckBox Content="API-Zugriff mit Token absichern"
+                                  Margin="0,8,0,0"
+                                  IsChecked="{Binding Settings.ApiRequireToken}" />
 
-        <TextBlock Text="Qx" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center"/>
-        <TextBox Text="{Binding Settings.RotationQx, UpdateSourceTrigger=PropertyChanged}" Grid.Row="1" Grid.Column="1"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <TextBlock Text="API-Token"
+                                       Width="220"
+                                       VerticalAlignment="Center"/>
+                            <TextBox Width="260"
+                                     Text="{Binding Settings.ApiToken,
+                                                    UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
 
-        <TextBlock Text="Qy" Grid.Row="2" Grid.Column="0" VerticalAlignment="Center"/>
-        <TextBox Text="{Binding Settings.RotationQy, UpdateSourceTrigger=PropertyChanged}" Grid.Row="2" Grid.Column="1"/>
-
-        <TextBlock Text="Qz" Grid.Row="3" Grid.Column="0" VerticalAlignment="Center"/>
-        <TextBox Text="{Binding Settings.RotationQz, UpdateSourceTrigger=PropertyChanged}" Grid.Row="3" Grid.Column="1"/>
-    </Grid>
-</GroupBox>
-
-<!-- Arcsec -->
-<GroupBox Header="Arcsec Offset" Margin="0,0,0,10">
-    <GroupBox.Style>
-        <Style TargetType="GroupBox">
-            <Setter Property="Visibility" Value="Collapsed"/>
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding IsArcsecMode}" Value="True">
-                    <Setter Property="Visibility" Value="Visible"/>
-                </DataTrigger>
-            </Style.Triggers>
-        </Style>
-    </GroupBox.Style>
-
-    <Grid Margin="10">
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="220"/>
-            <ColumnDefinition Width="*"/>
-        </Grid.ColumnDefinitions>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
-
-        <TextBlock Text="ΔRA (arcsec)" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center"/>
-        <TextBox Text="{Binding Settings.OffsetRaArcsec, UpdateSourceTrigger=PropertyChanged}"
-                 Grid.Row="0" Grid.Column="1"/>
-
-        <TextBlock Text="ΔDec (arcsec)" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center"/>
-        <TextBox Text="{Binding Settings.OffsetDecArcsec, UpdateSourceTrigger=PropertyChanged}"
-                 Grid.Row="1" Grid.Column="1"/>
-    </Grid>
-</GroupBox>
+                    </StackPanel>
+                </GroupBox>
 
             </StackPanel>
         </ScrollViewer>
-
     </DataTemplate>
+
 </ResourceDictionary>

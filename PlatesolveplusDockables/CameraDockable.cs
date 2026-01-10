@@ -1,5 +1,4 @@
-﻿using Accord;
-using NINA.Astrometry;
+﻿using NINA.Astrometry;
 using NINA.Core.Utility;
 using NINA.Equipment.Interfaces.Mediator;
 using NINA.Image.ImageData;
@@ -8,6 +7,7 @@ using NINA.PlateSolving.Interfaces;
 using NINA.Plugins.PlateSolvePlus.Models;
 using NINA.Plugins.PlateSolvePlus.PlateSolving;
 using NINA.Plugins.PlateSolvePlus.Services;
+using NINA.Plugins.PlateSolvePlus.Services.Api;
 using NINA.Plugins.PlateSolvePlus.Utils;
 using NINA.Profile.Interfaces;
 using NINA.WPF.Base.ViewModel;
@@ -15,10 +15,9 @@ using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.ComponentModel.Composition;
-using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -65,6 +64,17 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         private bool pluginSettingsHooked;
         private bool busHooked;
         private bool telescopeReferenceHooked;
+
+       // WEB API Variablen
+        private PlateSolvePlusApiHost? apiHost;
+        private bool apiBusy;
+
+        // Cache für letzte laufende Config (damit wir nicht dauernd restarten)
+        private bool lastApiEnabled;
+        private int lastApiPort;
+        private bool lastApiRequireToken;
+        private string? lastApiToken;
+
 
         private IAscomDeviceDiscoveryService AscomDiscovery => Context.AscomDiscovery;
         private ISecondaryCameraService SecondaryCameraService => Context.GetActiveSecondaryCameraService();
@@ -439,6 +449,18 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
                 ApplySettings(ReadSettingsFromPluginInstance(), force: true);
                 UpdateMountConnectionState();
+
+                // Start local API (port later can come from PluginSettings.Settings)
+                apiHost = new PlateSolvePlusApiHost(
+                    dockable: this,
+                    port: PluginSettings?.Settings?.ApiPort ?? 1899,
+                    enabled: PluginSettings?.Settings?.ApiEnabled ?? true,
+                    requireToken: PluginSettings?.Settings?.ApiRequireToken ?? false,
+                    token: PluginSettings?.Settings?.ApiToken);
+
+                apiHost.Start();
+                EnsureApiHostState();
+
             } catch (Exception ex) {
                 StatusText = "Initialization failed ❌";
                 DetailsText = ex.ToString();
@@ -448,7 +470,8 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         public void Dispose() {
             if (disposed) return;
             disposed = true;
-
+            apiHost?.Dispose();
+            apiHost = null;
             UnhookPluginSettings();
             UnhookSettingsBus();
             UnwireTelescopeReferenceService();
@@ -614,7 +637,14 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 case nameof(PlateSolvePlusSettings.RotationQz):
                     if (value is double qz) RotationQz = qz;
                     break;
-
+                case nameof(PlateSolvePlusSettings.ApiEnabled):
+                case nameof(PlateSolvePlusSettings.ApiPort):
+                case nameof(PlateSolvePlusSettings.ApiRequireToken):
+                case nameof(PlateSolvePlusSettings.ApiToken):
+                    // Werte müssen nicht zwingend gemirrort werden (UI kommt über Settings),
+                    // aber wir wollen auf Änderungen reagieren:
+                    EnsureApiHostState();
+                    break;
                 default:
                     break;
             }
@@ -638,6 +668,25 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         private void PluginSettings_PropertyChanged(object? sender, PropertyChangedEventArgs e) {
             ApplySettings(ReadSettingsFromPluginInstance(), force: false);
             UpdateSolvedTextsAfterOffsetChange();
+            var s = PluginSettings?.Settings;
+            if (s != null) {
+                switch (e.PropertyName) {
+                    case nameof(PlateSolvePlusSettings.ApiEnabled):
+                        PlateSolvePlusSettingsBus.Publish(nameof(PlateSolvePlusSettings.ApiEnabled), s.ApiEnabled);
+                        break;
+                    case nameof(PlateSolvePlusSettings.ApiPort):
+                        PlateSolvePlusSettingsBus.Publish(nameof(PlateSolvePlusSettings.ApiPort), s.ApiPort);
+                        break;
+                    case nameof(PlateSolvePlusSettings.ApiRequireToken):
+                        PlateSolvePlusSettingsBus.Publish(nameof(PlateSolvePlusSettings.ApiRequireToken), s.ApiRequireToken);
+                        break;
+                    case nameof(PlateSolvePlusSettings.ApiToken):
+                        PlateSolvePlusSettingsBus.Publish(nameof(PlateSolvePlusSettings.ApiToken), s.ApiToken);
+                        break;
+                }
+            }
+
+            EnsureApiHostState();
         }
 
         private PlateSolvePlusSettings ReadSettingsFromPluginInstance() {
@@ -1753,6 +1802,134 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             var svc = new OffsetService();
             return svc.ApplyToGuiderSolve(PluginSettings.Settings, guiderRaDeg, guiderDecDeg);
         }
+
+        // API Wrapper Triggers
+        internal string ApiCaptureOnlyAsync() {
+            if (apiBusy) return "busy";
+            apiBusy = true;
+            _ = Task.Run(async () =>
+            {
+                try { await CaptureOnlyAsync().ConfigureAwait(false); } finally { apiBusy = false; }
+            });
+            return "started";
+        }
+
+        internal string ApiCaptureAndSolveAsync() {
+            if (apiBusy) return "busy";
+            apiBusy = true;
+            _ = Task.Run(async () =>
+            {
+                try { await CaptureAndSyncOrSlewAsync().ConfigureAwait(false); } finally { apiBusy = false; }
+            });
+            return "started";
+        }
+
+        // Web API Status and Preview for REST)
+        internal string ApiCalibrateOffsetAsync() {
+            if (apiBusy) return "busy";
+            apiBusy = true;
+            _ = Task.Run(async () =>
+            {
+                try { await CalibrateOffsetAsync().ConfigureAwait(false); } finally { apiBusy = false; }
+            });
+            return "started";
+        }
+
+        internal object GetApiStatusObject() {
+            return new {
+                importsReady = importsReady,
+                busy = apiBusy,
+                mountConnected = IsMountConnected,
+                secondaryConnected = IsSecondaryConnected,
+                offsetEnabled = OffsetEnabled,
+                offsetMode = OffsetMode.ToString(),
+                offsetRaArcsec = OffsetRaArcsec,
+                offsetDecArcsec = OffsetDecArcsec,
+                rotation = new { qw = RotationQw, qx = RotationQx, qy = RotationQy, qz = RotationQz },
+                statusText = StatusText,
+                detailsText = DetailsText,
+                lastSolveSummary = LastSolveSummary,
+                lastGuiderSolveText = LastGuiderSolveText,
+                correctedSolveText = CorrectedSolveText
+            };
+        }
+
+        internal byte[]? GetLastPreviewAsJpegBytes() {
+            if (LastCapturedImage == null) return null;
+
+            var encoder = new JpegBitmapEncoder { QualityLevel = 85 };
+            encoder.Frames.Add(BitmapFrame.Create(LastCapturedImage));
+
+            using var ms = new MemoryStream();
+            encoder.Save(ms);
+            return ms.ToArray();
+        }
+
+        private void EnsureApiHostState() {
+            var s = PluginSettings?.Settings;
+            if (s == null) return;
+
+            var enabled = s.ApiEnabled;
+            var port = s.ApiPort <= 0 ? 1899 : s.ApiPort;
+            var requireToken = s.ApiRequireToken;
+            var token = s.ApiToken;
+
+            // === API disabled → stop ===
+            if (!enabled) {
+                apiHost?.Dispose();
+                apiHost = null;
+
+                lastApiEnabled = false;
+                lastApiPort = port;
+                lastApiRequireToken = requireToken;
+                lastApiToken = token;
+                return;
+            }
+
+            // === Start if not running ===
+            if (apiHost == null) {
+                apiHost = new Services.Api.PlateSolvePlusApiHost(
+                    dockable: this,
+                    port: port,
+                    enabled: true,
+                    requireToken: requireToken,
+                    token: token);
+
+                apiHost.Start();
+
+                lastApiEnabled = true;
+                lastApiPort = port;
+                lastApiRequireToken = requireToken;
+                lastApiToken = token;
+                return;
+            }
+
+            // === Restart only if relevant config changed ===
+            var needsRestart =
+                lastApiPort != port ||
+                lastApiRequireToken != requireToken ||
+                !string.Equals(lastApiToken, token, StringComparison.Ordinal);
+
+            if (needsRestart) {
+                try { apiHost.Dispose(); } catch { }
+
+                apiHost = new Services.Api.PlateSolvePlusApiHost(
+                    dockable: this,
+                    port: port,
+                    enabled: true,
+                    requireToken: requireToken,
+                    token: token);
+
+                apiHost.Start();
+
+                lastApiEnabled = true;
+                lastApiPort = port;
+                lastApiRequireToken = requireToken;
+                lastApiToken = token;
+            }
+        }
+
+
 
 
 #if DEBUG
