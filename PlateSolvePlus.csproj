@@ -65,20 +65,12 @@
 		<MakeDir Directories="$(_NinaPluginDir)" />
 
 		<!-- Always copy the main plugin DLL -->
-		<Copy SourceFiles="$(TargetPath)"
-			  DestinationFolder="$(_NinaPluginDir)"
-			  SkipUnchangedFiles="false" />
+		<Copy SourceFiles="$(TargetPath)" DestinationFolder="$(_NinaPluginDir)" SkipUnchangedFiles="false" />
 
 		<!-- Copy EmbedIO + Swan (if present in output) -->
-		<Copy SourceFiles="$(TargetDir)EmbedIO.dll"
-			  DestinationFolder="$(_NinaPluginDir)"
-			  Condition="Exists('$(TargetDir)EmbedIO.dll')"
-			  SkipUnchangedFiles="false" />
+		<Copy SourceFiles="$(TargetDir)EmbedIO.dll" DestinationFolder="$(_NinaPluginDir)" Condition="Exists('$(TargetDir)EmbedIO.dll')" SkipUnchangedFiles="false" />
 
-		<Copy SourceFiles="$(TargetDir)Swan.Lite.dll"
-			  DestinationFolder="$(_NinaPluginDir)"
-			  Condition="Exists('$(TargetDir)Swan.Lite.dll')"
-			  SkipUnchangedFiles="false" />
+		<Copy SourceFiles="$(TargetDir)Swan.Lite.dll" DestinationFolder="$(_NinaPluginDir)" Condition="Exists('$(TargetDir)Swan.Lite.dll')" SkipUnchangedFiles="false" />
 	</Target>
 
 </Project>

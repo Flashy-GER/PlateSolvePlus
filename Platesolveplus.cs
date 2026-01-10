@@ -8,6 +8,7 @@ using System.ComponentModel.Composition;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
+using System.Xml.Linq;
 
 namespace NINA.Plugins.PlateSolvePlus {
 
@@ -139,6 +140,14 @@ namespace NINA.Plugins.PlateSolvePlus {
                 s.CenteringThresholdArcmin = Math.Max(0.01, options.GetValueDouble(nameof(PlateSolvePlusSettings.CenteringThresholdArcmin), 1.0));
                 s.CenteringMaxAttempts = Math.Max(1, options.GetValueInt32(nameof(PlateSolvePlusSettings.CenteringMaxAttempts), 5));
 
+                // Local API
+                s.ApiEnabled = options.GetValueBoolean(nameof(PlateSolvePlusSettings.ApiEnabled), false);
+                s.ApiPort = options.GetValueInt32(nameof(PlateSolvePlusSettings.ApiPort), 1899);
+                s.ApiRequireToken = options.GetValueBoolean(nameof(PlateSolvePlusSettings.ApiRequireToken), false);
+                s.ApiToken = options.GetValueString(nameof(PlateSolvePlusSettings.ApiToken), "");
+                if (string.IsNullOrWhiteSpace(s.ApiToken)) s.ApiToken = null;
+
+
                 // Offset quaternion
                 s.RotationQw = options.GetValueDouble(nameof(PlateSolvePlusSettings.RotationQw), 1.0);
                 s.RotationQx = options.GetValueDouble(nameof(PlateSolvePlusSettings.RotationQx), 0.0);
@@ -226,6 +235,20 @@ namespace NINA.Plugins.PlateSolvePlus {
                     options.SetValueDouble(propertyName, Settings.CenteringThresholdArcmin); break;
                 case nameof(PlateSolvePlusSettings.CenteringMaxAttempts):
                     options.SetValueInt32(propertyName, Settings.CenteringMaxAttempts); break;
+                
+                // Web API
+                case nameof(PlateSolvePlusSettings.ApiEnabled):
+                    options.SetValueBoolean(propertyName, Settings.ApiEnabled);
+                    break;
+                case nameof(PlateSolvePlusSettings.ApiPort):
+                    options.SetValueInt32(propertyName, Settings.ApiPort);
+                    break;
+                case nameof(PlateSolvePlusSettings.ApiRequireToken):
+                    options.SetValueBoolean(propertyName, Settings.ApiRequireToken);
+                    break;
+                case nameof(PlateSolvePlusSettings.ApiToken):
+                    options.SetValueString(propertyName, Settings.ApiToken ?? "");
+                    break;
 
                 // Offset enabled + arcsec
                 case nameof(PlateSolvePlusSettings.OffsetEnabled):
@@ -294,6 +317,11 @@ namespace NINA.Plugins.PlateSolvePlus {
 
                 nameof(PlateSolvePlusSettings.OffsetMode) => Settings.OffsetMode,
                 nameof(PlateSolvePlusSettings.OffsetModeInt) => Settings.OffsetModeInt,
+
+                nameof(PlateSolvePlusSettings.ApiEnabled) => Settings.ApiEnabled,
+                nameof(PlateSolvePlusSettings.ApiPort) => Settings.ApiPort,
+                nameof(PlateSolvePlusSettings.ApiRequireToken) => Settings.ApiRequireToken,
+                nameof(PlateSolvePlusSettings.ApiToken) => Settings.ApiToken,
 
                 _ => null
             };

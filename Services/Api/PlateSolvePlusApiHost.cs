@@ -1,6 +1,4 @@
-﻿// File: Services/Api/PlateSolvePlusApiHost.cs
-
-using EmbedIO;
+﻿using EmbedIO;
 using EmbedIO.Cors;
 using EmbedIO.Routing;
 using EmbedIO.WebApi;

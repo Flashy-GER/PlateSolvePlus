@@ -238,10 +238,10 @@ namespace NINA.Plugins.PlateSolvePlus {
         // =========================
         // Local WEB API settings
         // =========================
-        private bool apiEnabled = false;
+        private bool apiEnabled = true;
         public bool ApiEnabled {
             get => apiEnabled;
-            set { if (apiEnabled == value) return; apiEnabled = value; OnPropertyChanged(nameof(ApiEnabled)); }
+            set { if (apiEnabled == value) return; apiEnabled = value; RaisePropertyChanged(nameof(ApiEnabled)); }
         }
 
         private int apiPort = 1899;
@@ -258,13 +258,13 @@ namespace NINA.Plugins.PlateSolvePlus {
         private bool apiRequireToken = false;
         public bool ApiRequireToken {
             get => apiRequireToken;
-            set { if (apiRequireToken == value) return; apiRequireToken = value; OnPropertyChanged(nameof(ApiRequireToken)); }
+            set { if (apiRequireToken == value) return; apiRequireToken = value; RaisePropertyChanged(nameof(ApiRequireToken)); }
         }
 
         private string? apiToken;
         public string? ApiToken {
             get => apiToken;
-            set { if (string.Equals(apiToken, value, StringComparison.Ordinal)) return; apiToken = value; OnPropertyChanged(nameof(ApiToken)); }
+            set { if (string.Equals(apiToken, value, StringComparison.Ordinal)) return; apiToken = value; RaisePropertyChanged(nameof(ApiToken)); }
         }
 
     }

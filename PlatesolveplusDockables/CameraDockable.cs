@@ -69,6 +69,13 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         private PlateSolvePlusApiHost? apiHost;
         private bool apiBusy;
 
+        // API state from bus / settings (source of truth for EnsureApiHostState)
+        private bool apiEnabledState;
+        private int apiPortState = 1899;
+        private bool apiRequireTokenState;
+        private string? apiTokenState;
+        private bool apiStateInitialized;
+
         // Cache für letzte laufende Config (damit wir nicht dauernd restarten)
         private bool lastApiEnabled;
         private int lastApiPort;
@@ -450,15 +457,17 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 ApplySettings(ReadSettingsFromPluginInstance(), force: true);
                 UpdateMountConnectionState();
 
-                // Start local API (port later can come from PluginSettings.Settings)
-                apiHost = new PlateSolvePlusApiHost(
-                    dockable: this,
-                    port: PluginSettings?.Settings?.ApiPort ?? 1899,
-                    enabled: PluginSettings?.Settings?.ApiEnabled ?? true,
-                    requireToken: PluginSettings?.Settings?.ApiRequireToken ?? false,
-                    token: PluginSettings?.Settings?.ApiToken);
+                // ---- API state init (one time) ----
+                var s = PluginSettings?.Settings;
+                if (s != null) {
+                    apiEnabledState = s.ApiEnabled;
+                    apiPortState = s.ApiPort;
+                    apiRequireTokenState = s.ApiRequireToken;
+                    apiTokenState = s.ApiToken;
+                    apiStateInitialized = true;
+                }
 
-                apiHost.Start();
+                // ✅ Single source of truth: EnsureApiHostState controls create/start/stop
                 EnsureApiHostState();
 
             } catch (Exception ex) {
@@ -470,15 +479,23 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         public void Dispose() {
             if (disposed) return;
             disposed = true;
+
+            // Stop API host
             apiHost?.Dispose();
             apiHost = null;
+
+            // Unhook in exactly one place each
             UnhookPluginSettings();
             UnhookSettingsBus();
+
             UnwireTelescopeReferenceService();
             StopMountPoll();
 
-            this.profileService.ProfileChanged -= ProfileService_ProfileChanged;
+            if (profileService != null) {
+                profileService.ProfileChanged -= ProfileService_ProfileChanged;
+            }
         }
+
 
         private void ProfileService_ProfileChanged(object? sender, EventArgs e) {
             ApplySettings(ReadSettingsFromPluginInstance(), force: true);
@@ -495,28 +512,44 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             if (PluginSettings == null) return;
 
             PluginSettings.PropertyChanged += PluginSettings_PropertyChanged;
+
+            // Änderungen aus Options.xaml passieren auf Settings
+            if (PluginSettings.Settings != null) {
+                PluginSettings.Settings.PropertyChanged += Settings_PropertyChanged;
+            }
+
             pluginSettingsHooked = true;
         }
 
         private void UnhookPluginSettings() {
             if (!pluginSettingsHooked) return;
+
             if (PluginSettings != null) {
                 PluginSettings.PropertyChanged -= PluginSettings_PropertyChanged;
+
+                if (PluginSettings.Settings != null) {
+                    PluginSettings.Settings.PropertyChanged -= Settings_PropertyChanged;
+                }
             }
+
             pluginSettingsHooked = false;
         }
 
+
+        private bool settingsBusHooked;
+
         private void HookSettingsBus() {
-            if (busHooked) return;
+            if (settingsBusHooked) return;
             PlateSolvePlusSettingsBus.SettingChanged += SettingsBus_SettingChanged;
-            busHooked = true;
+            settingsBusHooked = true;
         }
 
         private void UnhookSettingsBus() {
-            if (!busHooked) return;
+            if (!settingsBusHooked) return;
             PlateSolvePlusSettingsBus.SettingChanged -= SettingsBus_SettingChanged;
-            busHooked = false;
+            settingsBusHooked = false;
         }
+
 
         private void WireTelescopeReferenceService() {
             if (telescopeReferenceHooked) return;
@@ -566,6 +599,18 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         }
 
         private void SettingsBus_SettingChanged(object? sender, PlateSolvePlusSettingChangedEventArgs e) {
+            if (e == null) return;
+
+            switch (e.Key) {
+                case nameof(PlateSolvePlusSettings.ApiEnabled):
+                case nameof(PlateSolvePlusSettings.ApiPort):
+                case nameof(PlateSolvePlusSettings.ApiRequireToken):
+                case nameof(PlateSolvePlusSettings.ApiToken):
+
+                    Logger.Info($"[PlateSolvePlus] SettingsBus: {e.Key} changed -> {e.Value}");
+                    EnsureApiHostState();
+                    break;
+            }
             try {
                 if (Application.Current?.Dispatcher != null && !Application.Current.Dispatcher.CheckAccess()) {
                     Application.Current.Dispatcher.InvokeAsync(() => ApplySingleFromBus(e.Key, e.Value));
@@ -637,14 +682,28 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 case nameof(PlateSolvePlusSettings.RotationQz):
                     if (value is double qz) RotationQz = qz;
                     break;
+
                 case nameof(PlateSolvePlusSettings.ApiEnabled):
-                case nameof(PlateSolvePlusSettings.ApiPort):
-                case nameof(PlateSolvePlusSettings.ApiRequireToken):
-                case nameof(PlateSolvePlusSettings.ApiToken):
-                    // Werte müssen nicht zwingend gemirrort werden (UI kommt über Settings),
-                    // aber wir wollen auf Änderungen reagieren:
+                    if (value is bool b) { apiEnabledState = b; apiStateInitialized = true; }
                     EnsureApiHostState();
                     break;
+
+                case nameof(PlateSolvePlusSettings.ApiPort):
+                    if (value is int p) { apiPortState = p; apiStateInitialized = true; }
+                    EnsureApiHostState();
+                    break;
+
+                case nameof(PlateSolvePlusSettings.ApiRequireToken):
+                    if (value is bool rt) { apiRequireTokenState = rt; apiStateInitialized = true; }
+                    EnsureApiHostState();
+                    break;
+
+                case nameof(PlateSolvePlusSettings.ApiToken):
+                    apiTokenState = value as string;
+                    apiStateInitialized = true;
+                    EnsureApiHostState();
+                    break;
+
                 default:
                     break;
             }
@@ -686,7 +745,17 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 }
             }
 
-            EnsureApiHostState();
+            return;
+        }
+
+        private void Settings_PropertyChanged(object? sender, PropertyChangedEventArgs e) {
+            // Optional: nur auf API-relevante Properties reagieren
+            if (e.PropertyName == nameof(PlateSolvePlusSettings.ApiEnabled) ||
+                e.PropertyName == nameof(PlateSolvePlusSettings.ApiPort) ||
+                e.PropertyName == nameof(PlateSolvePlusSettings.ApiRequireToken) ||
+                e.PropertyName == nameof(PlateSolvePlusSettings.ApiToken)){
+                return;
+            }
         }
 
         private PlateSolvePlusSettings ReadSettingsFromPluginInstance() {
@@ -1490,8 +1559,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             }
         }
 
-
-    
         private static object? TryCreateAngleFromHours(Type angleType, double hours) {
             try {
                 // look for static FromHours(double)
@@ -1670,98 +1737,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             DetailsText = $"Max attempts ({maxAttempts}) reached. Consider increasing threshold or improving offset calibration.";
         }
 
-
-        private async Task CenterWithSecondaryAsync(double thresholdArcmin = 1.0, int maxAttempts = 5) {
-            UpdateMountConnectionState();
-
-            if (!IsMountConnected) {
-                StatusText = "Mount not connected ❌";
-                DetailsText = "Connect the telescope/mount in NINA first.";
-                return;
-            }
-
-            if (!IsSecondaryConnected) {
-                StatusText = "Secondary camera not connected ❌";
-                DetailsText = "Click Connect first.";
-                return;
-            }
-
-            // 1) First solve defines the "desired" sky position (guider sky)
-            StatusText = "Centering: initial capture/solve…";
-            DetailsText = $"Threshold={thresholdArcmin:0.###} arcmin, MaxAttempts={maxAttempts}";
-
-            var first = await CaptureAndSolveGuiderAsync(updateUi: true).ConfigureAwait(false);
-            if (!first.success) return;
-
-            lastGuiderSolveDeg = (first.raDeg, first.decDeg);
-            LastGuiderSolveText = FormatSolvedLine("Guider", first.raDeg, first.decDeg);
-
-            // Desired MAIN sky position (fixed for the whole centering run)
-            var useOffset = OffsetEnabled && HasOffsetSet && PluginSettings?.Settings != null;
-
-            var desiredMain = useOffset
-                ? MapGuiderToMain(first.raDeg, first.decDeg)
-                : (first.raDeg, first.decDeg);
-
-            // Show corrected preview line
-            lastCorrectedSolveDeg = useOffset ? desiredMain : (ValueTuple<double, double>?)null;
-
-            CorrectedSolveText = FormatSolvedLine("Desired(main)", desiredMain.raDeg, desiredMain.decDeg);
-
-
-            // 2) Iterative loop like NINA CenteringSolver
-            for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-
-                StatusText = $"Centering: attempt {attempt}/{maxAttempts} – solving…";
-                DetailsText = $"Desired(main): RA={desiredMain.raDeg:0.######}°, Dec={desiredMain.decDeg:0.######}°";
-
-                var cur = await CaptureAndSolveGuiderAsync(updateUi: true).ConfigureAwait(false);
-                if (!cur.success) return;
-
-                lastGuiderSolveDeg = (cur.raDeg, cur.decDeg);
-                LastGuiderSolveText = FormatSolvedLine("Guider", cur.raDeg, cur.decDeg);
-
-                // Estimate current MAIN sky using guider solve + offset model
-                var solvedMain = MapGuiderToMain(cur.raDeg, cur.decDeg);
-
-                var errArcmin = SeparationArcmin(solvedMain.raDeg, solvedMain.decDeg, desiredMain.raDeg, desiredMain.decDeg);
-
-                CorrectedSolveText =
-                    $"{FormatSolvedLine("Solved(main)", solvedMain.raDeg, solvedMain.decDeg)}\n" +
-                    $"Error: {errArcmin:0.###} arcmin (threshold {thresholdArcmin:0.###})";
-
-                if (errArcmin <= thresholdArcmin) {
-                    StatusText = "Centering done ✅";
-                    DetailsText = $"Reached threshold: {errArcmin:0.###} arcmin ≤ {thresholdArcmin:0.###}";
-                    return;
-                }
-
-                // NINA-style correction: slew to (desired + (desired - solved))
-                // Equivalent: apply pointing error again to compensate mount model error.
-                var deltaRa = NormalizeDeltaDeg(desiredMain.raDeg - solvedMain.raDeg);
-                var deltaDec = desiredMain.decDeg - solvedMain.decDeg;
-
-                var slewRa = NormalizeRaDeg(desiredMain.raDeg + deltaRa);
-                var slewDec = Math.Max(-90.0, Math.Min(90.0, desiredMain.decDeg + deltaDec));
-
-                StatusText = $"Centering: attempt {attempt}/{maxAttempts} – slewing…";
-                DetailsText =
-                    $"Error={errArcmin:0.###} arcmin\n" +
-                    $"SlewTo(main): RA={slewRa:0.######}°, Dec={slewDec:0.######}°";
-
-                if (!TryToCoordinates(slewRa, slewDec, out var slewCoords)) {
-                    // TryToCoordinates updates Status/Details itself
-                    return;
-                }
-
-                await TelescopeMediator!.SlewToCoordinatesAsync(slewCoords, CancellationToken.None);
-            }
-
-            StatusText = "Centering not reached ⚠️";
-            DetailsText = $"Max attempts ({maxAttempts}) reached. Consider increasing threshold or improving offset calibration.";
-        }
-
-
         // Platesolve Center Helper
 
         private static double NormalizeDeltaDeg(double deltaDeg) {
@@ -1866,70 +1841,51 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         }
 
         private void EnsureApiHostState() {
-            var s = PluginSettings?.Settings;
-            if (s == null) return;
+            
+            bool enabled;
+            int port;
+            bool requireToken;
+            string? token;
+            
 
-            var enabled = s.ApiEnabled;
-            var port = s.ApiPort <= 0 ? 1899 : s.ApiPort;
-            var requireToken = s.ApiRequireToken;
-            var token = s.ApiToken;
+            if (apiStateInitialized) {
+                enabled = apiEnabledState;
+                port = apiPortState;
+                requireToken = apiRequireTokenState;
+                token = apiTokenState;
+            } else {
+                var s = PluginSettings?.Settings;
+                enabled = s?.ApiEnabled ?? false;
+                port = s?.ApiPort ?? 1899;
+                requireToken = s?.ApiRequireToken ?? false;
+                token = s?.ApiToken;
+            }
 
-            // === API disabled → stop ===
+            Logger.Info(enabled
+            ? "[PlateSolvePlus] API HOST START"
+            : "[PlateSolvePlus] API HOST STOP");
+           // Logger.Info($"[PlateSolvePlus] EnsureApiHostState: apiHostNull={(apiHost == null)} enabled={enabled} port={port}");
+            Logger.Info($"[PlateSolvePlus] EnsureApiHostState ENTER apiHostNull={(apiHost == null)} enabled={enabled} port={port}");
+
             if (!enabled) {
+                Logger.Info("[PlateSolvePlus] EnsureApiHostState -> DISABLE path (disposing)");
                 apiHost?.Dispose();
                 apiHost = null;
-
-                lastApiEnabled = false;
-                lastApiPort = port;
-                lastApiRequireToken = requireToken;
-                lastApiToken = token;
                 return;
             }
 
-            // === Start if not running ===
             if (apiHost == null) {
-                apiHost = new Services.Api.PlateSolvePlusApiHost(
-                    dockable: this,
-                    port: port,
-                    enabled: true,
-                    requireToken: requireToken,
-                    token: token);
-
+                Logger.Info("[PlateSolvePlus] EnsureApiHostState -> CREATE host");
+                apiHost = new PlateSolvePlusApiHost(this, port, true, requireToken, token);
+                Logger.Info($"[PlateSolvePlus] EnsureApiHostState -> CREATED apiHostNull={(apiHost == null)}");
                 apiHost.Start();
-
-                lastApiEnabled = true;
-                lastApiPort = port;
-                lastApiRequireToken = requireToken;
-                lastApiToken = token;
+                Logger.Info("[PlateSolvePlus] EnsureApiHostState -> START called");
                 return;
             }
 
-            // === Restart only if relevant config changed ===
-            var needsRestart =
-                lastApiPort != port ||
-                lastApiRequireToken != requireToken ||
-                !string.Equals(lastApiToken, token, StringComparison.Ordinal);
+            Logger.Info("[PlateSolvePlus] EnsureApiHostState -> already running (maybe restart check)");
 
-            if (needsRestart) {
-                try { apiHost.Dispose(); } catch { }
-
-                apiHost = new Services.Api.PlateSolvePlusApiHost(
-                    dockable: this,
-                    port: port,
-                    enabled: true,
-                    requireToken: requireToken,
-                    token: token);
-
-                apiHost.Start();
-
-                lastApiEnabled = true;
-                lastApiPort = port;
-                lastApiRequireToken = requireToken;
-                lastApiToken = token;
-            }
         }
-
-
 
 
 #if DEBUG
