@@ -1,4 +1,5 @@
 ﻿using NINA.Plugins.PlateSolvePlus.PlateSolving;
+using NINA.Plugins.PlateSolvePlus.Utils;
 using System;
 
 namespace NINA.Plugins.PlateSolvePlus.Services {

@@ -54,7 +54,10 @@ namespace NINA.Plugins.PlateSolvePlus.Services.Api {
             if (_server != null) return;
 
             // Bind only to localhost for safety.
-            var url = $"http://127.0.0.1:{Port}/";
+            // var url = $"http://127.0.0.1:{Port}/";
+
+            // Bind to all local interfaces (LAN + localhost)
+            var url = $"http://+:{Port}/";
 
             _ws = new PlateSolvePlusWsModule("/ws/platesolveplus");
 
@@ -74,6 +77,8 @@ namespace NINA.Plugins.PlateSolvePlus.Services.Api {
             try {
                 _server.RunAsync(); // fire-and-forget
                 Logger.Info($"[PlateSolvePlusApiHost] Started at {url}");
+                Logger.Info($"[PlateSolvePlusApiHost] Listening on all interfaces at port {Port}");
+
             } catch (Exception ex) {
                 Logger.Error($"[PlateSolvePlusApiHost] Start failed: {ex}");
                 Stop();
@@ -208,14 +213,14 @@ namespace NINA.Plugins.PlateSolvePlus.Services.Api {
             return SendAsync(context, Encoding.UTF8.GetBytes(json));
         }
 
-        // ✅ REQUIRED by your EmbedIO version
+        // REQUIRED by EmbedIO version
         protected override Task OnMessageReceivedAsync(
             IWebSocketContext context,
             byte[] buffer,
             IWebSocketReceiveResult result) {
             // Optional: handle client messages (ping, subscribe, etc.)
             // For now we just ignore incoming messages safely.
-            // If you'd like, we can parse JSON commands here later.
+            // parse JSON commands here later.
 
             // Example: respond to "ping"
             try {
