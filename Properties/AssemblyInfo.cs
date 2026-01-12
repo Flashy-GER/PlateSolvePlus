@@ -45,7 +45,7 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyMetadata("ChangelogURL", "https://github.com/Flashy-GER/PlateSolvePlus/blob/dev/CHANGELOG.md")]
 
 //[Optional] The url to a featured logo that will be displayed in the plugin list next to the name
-[assembly: AssemblyMetadata("FeaturedImageURL", "https://github.com/Flashy-GER/PlateSolvePlus/blob/dev/Docu/Pics/Icon_Platesolveplus.png?raw=true")]
+[assembly: AssemblyMetadata("FeaturedImageURL", "https://github.com/Flashy-GER/PlateSolvePlus/blob/dev/Docu/Pics/Icon_Platsolveplus.png?raw=true")]
 //[Optional] A url to an example screenshot of your plugin in action
 [assembly: AssemblyMetadata("ScreenshotURL", "")]
 //[Optional] An additional url to an example example screenshot of your plugin in action
