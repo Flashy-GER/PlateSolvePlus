@@ -4,8 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <ResourceDictionary.MergedDictionaries>
-        <!-- Falls du Converters.xaml im Projekt hast, darf das bleiben -->
-        <ResourceDictionary Source="Converters.xaml"/>
+        <ResourceDictionary Source="Converters/Converters.xaml"/>
     </ResourceDictionary.MergedDictionaries>
 
     <!-- =========================================
@@ -252,83 +251,89 @@
                     </GroupBox>
 
                     <!-- ========== Touch-N-Stars / Local API ========== -->
-                    <GroupBox Header="Touch-N-Stars / Local API" Margin="0,0,0,10" HorizontalAlignment="Left">
-                        <StackPanel Margin="10">
+<GroupBox Header="Touch-N-Stars / Local API" Margin="0,0,0,10" HorizontalAlignment="Left">
+    <StackPanel Margin="10">
 
-                            <CheckBox Content="Local API aktivieren (localhost)"
-                                      ToolTip="Startet einen lokalen API-Host (Trigger/Results/Preview für Touch-N-Stars)."
-                                      IsChecked="{Binding Settings.ApiEnabled, UpdateSourceTrigger=PropertyChanged}"/>
+        <CheckBox Content="Local API aktivieren"
+                  ToolTip="Startet einen lokalen API-Host (Trigger/Results/Preview für Touch-N-Stars)."
+                  IsChecked="{Binding Settings.ApiEnabled, UpdateSourceTrigger=PropertyChanged}"/>
 
-                            <StackPanel Style="{StaticResource FormRow}" Margin="0,10,0,0">
-                                <TextBlock Style="{StaticResource FormRowLabel}"
-                                           Text="Port"
-                                           ToolTip="TCP-Port des API-Hosts (z.B. 1899)."/>
-                                <TextBox Width="140"
-                                         ToolTip="z.B. 17890"
-                                         Text="{Binding Settings.ApiPort, UpdateSourceTrigger=PropertyChanged}">
-                                    <TextBox.Style>
-                                        <!-- bind directly to ApiEnabled by using a nested binding via DataTrigger -->
-                                        <Style TargetType="{x:Type TextBox}">
-                                            <Setter Property="IsEnabled" Value="True"/>
-                                            <Setter Property="Opacity" Value="1"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding Settings.ApiEnabled}" Value="False">
-                                                    <Setter Property="IsEnabled" Value="False"/>
-                                                    <Setter Property="Opacity" Value="0.6"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBox.Style>
-                                </TextBox>
-                            </StackPanel>
+        <!-- Port -->
+        <StackPanel Style="{StaticResource FormRow}" Margin="0,10,0,0">
+            <TextBlock Style="{StaticResource FormRowLabel}"
+                       Text="Port"
+                       ToolTip="TCP-Port des API-Hosts (z.B. 1899)."/>
+            <TextBox Width="140"
+                     ToolTip="z.B. 17890"
+                     Text="{Binding Settings.ApiPort, UpdateSourceTrigger=PropertyChanged}">
+                <TextBox.Style>
+                    <Style TargetType="{x:Type TextBox}">
+                        <Setter Property="IsReadOnly" Value="False"/>
+                        <Setter Property="Opacity" Value="1"/>
+                        <Style.Triggers>
+                            <!-- When API is enabled: allow read-only (copy), not editable -->
+                            <DataTrigger Binding="{Binding Settings.ApiEnabled}" Value="True">
+                                <Setter Property="IsReadOnly" Value="True"/>
+                                <Setter Property="Opacity" Value="0.6"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBox.Style>
+            </TextBox>
+        </StackPanel>
 
-                            <CheckBox Content="API-Zugriff mit Token absichern"
-                                      Margin="0,6,0,0"
-                                      ToolTip="Wenn aktiv: Requests müssen einen Token mitsenden."
-                                      IsChecked="{Binding Settings.ApiRequireToken, UpdateSourceTrigger=PropertyChanged}">
-                                <CheckBox.Style>
-                                    <Style TargetType="{x:Type CheckBox}">
-                                        <Setter Property="IsEnabled" Value="True"/>
-                                        <Setter Property="Opacity" Value="1"/>
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding Settings.ApiEnabled}" Value="False">
-                                                <Setter Property="IsEnabled" Value="False"/>
-                                                <Setter Property="Opacity" Value="0.6"/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </CheckBox.Style>
-                            </CheckBox>
+        <!-- Require Token -->
+        <CheckBox Content="API-Zugriff mit Token absichern"
+                  Margin="0,6,0,0"
+                  ToolTip="Wenn aktiv: Requests müssen einen Token mitsenden."
+                  IsChecked="{Binding Settings.ApiRequireToken, UpdateSourceTrigger=PropertyChanged}">
+            <CheckBox.Style>
+                <Style TargetType="{x:Type CheckBox}">
+                    <Setter Property="IsEnabled" Value="True"/>
+                    <Setter Property="Opacity" Value="1"/>
+                    <Style.Triggers>
+                        <!-- When API is enabled: checkbox becomes read-only by disabling it -->
+                        <DataTrigger Binding="{Binding Settings.ApiEnabled}" Value="True">
+                            <Setter Property="IsEnabled" Value="False"/>
+                            <Setter Property="Opacity" Value="0.6"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </CheckBox.Style>
+        </CheckBox>
 
-                            <StackPanel Style="{StaticResource FormRow}" Margin="0,8,0,0">
-                                <TextBlock Style="{StaticResource FormRowLabel}"
-                                           Text="API-Token"
-                                           ToolTip="Token für Auth (nur genutzt, wenn Require Token aktiv ist)."/>
-                                <TextBox Width="280"
-                                         ToolTip="Wird nur genutzt, wenn 'Require Token' aktiv ist."
-                                         Text="{Binding Settings.ApiToken, UpdateSourceTrigger=PropertyChanged}">
-                                    <TextBox.Style>
-                                        <Style TargetType="{x:Type TextBox}">
-                                            <Setter Property="IsEnabled" Value="True"/>
-                                            <Setter Property="Opacity" Value="1"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding Settings.ApiEnabled}" Value="False">
-                                                    <Setter Property="IsEnabled" Value="False"/>
-                                                    <Setter Property="Opacity" Value="0.6"/>
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Settings.ApiRequireToken}" Value="False">
-                                                    <Setter Property="IsEnabled" Value="False"/>
-                                                    <Setter Property="Opacity" Value="0.6"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBox.Style>
-                                </TextBox>
-                            </StackPanel>
+        <!-- Token -->
+        <StackPanel Style="{StaticResource FormRow}" Margin="0,8,0,0">
+            <TextBlock Style="{StaticResource FormRowLabel}"
+                       Text="API-Token"
+                       ToolTip="Token für Auth (nur genutzt, wenn Require Token aktiv ist)."/>
+            <TextBox Width="280"
+                     ToolTip="Wird nur genutzt, wenn 'Require Token' aktiv ist."
+                     Text="{Binding Settings.ApiToken, UpdateSourceTrigger=PropertyChanged}">
+                <TextBox.Style>
+                    <Style TargetType="{x:Type TextBox}">
+                        <Setter Property="IsReadOnly" Value="False"/>
+                        <Setter Property="Opacity" Value="1"/>
+                        <Style.Triggers>
+                            <!-- When API is enabled: read-only -->
+                            <DataTrigger Binding="{Binding Settings.ApiEnabled}" Value="True">
+                                <Setter Property="IsReadOnly" Value="True"/>
+                                <Setter Property="Opacity" Value="0.6"/>
+                            </DataTrigger>
 
-                        </StackPanel>
-                    </GroupBox>
+                            <!-- When token is not required: keep it read-only-ish by disabling edits (still copyable) -->
+                            <DataTrigger Binding="{Binding Settings.ApiRequireToken}" Value="False">
+                                <Setter Property="IsReadOnly" Value="True"/>
+                                <Setter Property="Opacity" Value="0.6"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBox.Style>
+            </TextBox>
+        </StackPanel>
 
+    </StackPanel>
+</GroupBox>
                 </StackPanel>
 
                 <!-- =======================

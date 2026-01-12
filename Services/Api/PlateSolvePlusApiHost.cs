@@ -5,8 +5,12 @@ using EmbedIO.WebApi;
 using EmbedIO.WebSockets;
 using NINA.Core.Utility;
 using System;
+using System.Net;
+using System.Net.Http;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
@@ -14,7 +18,8 @@ using System.Windows.Threading;
 namespace NINA.Plugins.PlateSolvePlus.Services.Api {
     /// <summary>
     /// Local REST + WebSocket API host for PlateSolvePlus.
-    /// Runs on localhost only. Intended for Touch-N-Stars integration.
+    /// Intended for Touch-N-Stars integration.
+    /// Includes a startup self-test and URLACL hinting for LAN binding.
     /// </summary>
     public sealed class PlateSolvePlusApiHost : IDisposable {
         private readonly PlatesolveplusDockables.CameraDockable _dockable;
@@ -31,6 +36,11 @@ namespace NINA.Plugins.PlateSolvePlus.Services.Api {
         public string? Token { get; }
 
         public bool IsRunning => _server != null;
+
+        /// <summary>
+        /// Timeout used for the post-start health probe.
+        /// </summary>
+        public TimeSpan SelfTestTimeout { get; set; } = TimeSpan.FromSeconds(2);
 
         public PlateSolvePlusApiHost(
             PlatesolveplusDockables.CameraDockable dockable,
@@ -50,14 +60,19 @@ namespace NINA.Plugins.PlateSolvePlus.Services.Api {
 
         public void Start() {
             if (!Enabled) return;
-
             if (_server != null) return;
 
-            // Bind only to localhost for safety.
+            // Bind only to localhost for safety:
             // var url = $"http://127.0.0.1:{Port}/";
 
             // Bind to all local interfaces (LAN + localhost)
             var url = $"http://+:{Port}/";
+
+            // Preflight: check if port is already taken (common issue)
+            if (!IsTcpPortFreeOnLoopback(Port)) {
+                Logger.Error($"[PlateSolvePlusApiHost] Port {Port} is already in use. API host will not start.");
+                return;
+            }
 
             _ws = new PlateSolvePlusWsModule("/ws/platesolveplus");
 
@@ -72,13 +87,20 @@ namespace NINA.Plugins.PlateSolvePlus.Services.Api {
                 // WebSocket module
                 .WithModule(_ws)
                 // REST API
-                .WithWebApi("/api", m => m.WithController(() => new PlateSolvePlusApiController(_dockable, _dispatcher, _ws)));
+                .WithWebApi("/api", m => m
+                    .WithController(() => new PlateSolvePlusApiController(_dockable, _dispatcher, _ws))
+                    .WithController(() => new PlateSolvePlusHealthController()));
 
             try {
                 _server.RunAsync(); // fire-and-forget
                 Logger.Info($"[PlateSolvePlusApiHost] Started at {url}");
                 Logger.Info($"[PlateSolvePlusApiHost] Listening on all interfaces at port {Port}");
 
+                // Post-start: self-test (health probe)
+                _ = RunSelfTestAsync();
+            } catch (HttpListenerException hex) {
+                LogHttpListenerException(url, hex);
+                Stop();
             } catch (Exception ex) {
                 Logger.Error($"[PlateSolvePlusApiHost] Start failed: {ex}");
                 Stop();
@@ -95,6 +117,84 @@ namespace NINA.Plugins.PlateSolvePlus.Services.Api {
         }
 
         public void Dispose() => Stop();
+
+        // ============================================================
+        // Self-test & helpers
+        // ============================================================
+        private static bool IsTcpPortFreeOnLoopback(int port) {
+            try {
+                var listener = new TcpListener(IPAddress.Loopback, port);
+                listener.Start();
+                listener.Stop();
+                return true;
+            } catch {
+                return false;
+            }
+        }
+
+        private async Task RunSelfTestAsync() {
+            // Always probe via 127.0.0.1 to avoid name resolution and to keep the test stable.
+            var probeUrl = $"http://127.0.0.1:{Port}/api/health";
+
+            try {
+                using var cts = new CancellationTokenSource(SelfTestTimeout);
+
+                using var http = new HttpClient {
+                    Timeout = SelfTestTimeout
+                };
+
+                var req = new HttpRequestMessage(HttpMethod.Get, probeUrl);
+
+                // If token auth is enabled, send the expected header (matches PlateSolvePlusAuthModule).
+                if (RequireToken && !string.IsNullOrWhiteSpace(Token)) {
+                    req.Headers.TryAddWithoutValidation("X-PSP-Token", Token);
+                }
+
+                var resp = await http.SendAsync(req, cts.Token).ConfigureAwait(false);
+                var body = await resp.Content.ReadAsStringAsync(cts.Token).ConfigureAwait(false);
+
+                if (!resp.IsSuccessStatusCode) {
+                    Logger.Warning($"[PlateSolvePlusApiHost] SelfTest failed: HTTP {(int)resp.StatusCode} {resp.ReasonPhrase}. Body={body}");
+                    return;
+                }
+
+                Logger.Info($"[PlateSolvePlusApiHost] SelfTest OK: {probeUrl} -> {body}");
+            } catch (TaskCanceledException) {
+                Logger.Warning($"[PlateSolvePlusApiHost] SelfTest timeout: {probeUrl} did not respond within {SelfTestTimeout.TotalMilliseconds:0}ms");
+            } catch (Exception ex) {
+                Logger.Warning($"[PlateSolvePlusApiHost] SelfTest exception: {ex.Message}");
+            }
+        }
+
+        private static void LogHttpListenerException(string url, HttpListenerException hex) {
+            Logger.Error($"[PlateSolvePlusApiHost] HttpListenerException starting {url}: {hex.Message} (Code={hex.ErrorCode}, Native={hex.NativeErrorCode})");
+
+            // NativeErrorCode 5 == Access denied (URLACL missing when binding to http://+:/)
+            if (hex.NativeErrorCode == 5) {
+                Logger.Error("[PlateSolvePlusApiHost] Access denied. If you bind to all interfaces, you likely need a URLACL reservation.");
+                Logger.Error($"[PlateSolvePlusApiHost] Run (elevated): netsh http add urlacl url={url} user=Everyone");
+                Logger.Error("[PlateSolvePlusApiHost] Or switch back to localhost binding (127.0.0.1).");
+            }
+        }
+    }
+
+    // ============================================================
+    // Health Controller (used by Self-Test)
+    // ============================================================
+    internal sealed class PlateSolvePlusHealthController : WebApiController {
+        [Route(HttpVerbs.Get, "/health")]
+        public async Task GetHealth() {
+            HttpContext.Response.ContentType = "application/json; charset=utf-8";
+            HttpContext.Response.Headers["Cache-Control"] = "no-store";
+
+            var json = JsonSerializer.Serialize(new {
+                ok = true,
+                service = "PlateSolvePlus",
+                utc = DateTime.UtcNow
+            }, new JsonSerializerOptions { WriteIndented = false });
+
+            await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
+        }
     }
 
     // ============================================================
@@ -117,7 +217,6 @@ namespace NINA.Plugins.PlateSolvePlus.Services.Api {
         [Route(HttpVerbs.Get, "/platesolveplus/status")]
         public async Task GetStatus() {
             var status = await RunOnUiAsync(() => _dockable.GetApiStatusObject());
-
             await JsonAsync(status);
         }
 
@@ -265,8 +364,17 @@ namespace NINA.Plugins.PlateSolvePlus.Services.Api {
         protected override Task OnRequestAsync(IHttpContext context) {
             if (!_enabled()) return Task.CompletedTask;
 
+            // Allow CORS preflight
+            if (string.Equals(context.Request.HttpMethod, "OPTIONS", StringComparison.OrdinalIgnoreCase))
+                return Task.CompletedTask;
+
             var expected = _tokenProvider();
-            if (string.IsNullOrWhiteSpace(expected)) return Task.CompletedTask;
+
+            // Hardening: if RequireToken is enabled but token is empty, deny all
+            if (string.IsNullOrWhiteSpace(expected)) {
+                context.Response.StatusCode = 500;
+                return context.SendStringAsync("Token auth enabled but no token configured.", "text/plain", Encoding.UTF8);
+            }
 
             var token = context.Request.Headers["X-PSP-Token"];
             if (!string.Equals(token, expected, StringComparison.Ordinal)) {
@@ -276,5 +384,6 @@ namespace NINA.Plugins.PlateSolvePlus.Services.Api {
 
             return Task.CompletedTask;
         }
+
     }
 }
