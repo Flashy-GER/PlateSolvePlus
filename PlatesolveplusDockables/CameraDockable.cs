@@ -12,6 +12,7 @@ using NINA.Plugins.PlateSolvePlus.Utils;
 using NINA.Profile.Interfaces;
 using NINA.WPF.Base.ViewModel;
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.ComponentModel.Composition;
@@ -83,8 +84,8 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         private string? lastApiToken;
 
 
-        private IAscomDeviceDiscoveryService AscomDiscovery => Context.AscomDiscovery;
-        private ISecondaryCameraService SecondaryCameraService => Context.GetActiveSecondaryCameraService();
+        internal IAscomDeviceDiscoveryService AscomDiscovery => Context.AscomDiscovery;
+        internal ISecondaryCameraService SecondaryCameraService => Context.GetActiveSecondaryCameraService();
 
         // ===== Dropdown =====
         public ObservableCollection<AscomDeviceInfo> SecondaryCameraDevices { get; } =
@@ -754,9 +755,9 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 e.PropertyName == nameof(PlateSolvePlusSettings.ApiPort) ||
                 e.PropertyName == nameof(PlateSolvePlusSettings.ApiRequireToken) ||
                 e.PropertyName == nameof(PlateSolvePlusSettings.ApiToken)){
-                return;
-            }
-        }
+                    return;
+             }
+         }
 
         private PlateSolvePlusSettings ReadSettingsFromPluginInstance() {
             var ps = PluginSettings;
@@ -1084,9 +1085,25 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 ushort[] packed = ConvertToUShortRowMajor(frame.Pixels, frame.Width, frame.Height);
 
                 if (updateUi) {
-                    LastCapturedImage = CreateGray16Bitmap(packed, frame.Width, frame.Height);
-                    StatusText = "Building IImageData…";
+                    var opts = new PreviewRenderOptions {
+                        AutoStretch = PreviewAutoStretchEnabled,
+                        StretchLowPercentile = 0.01,
+                        StretchHighPercentile = 0.995,
+                        Gamma = 0.9
+                    };
+
+                    var preview = previewRenderService.RenderPreview(
+                        new CapturedFrame(frame.Width, frame.Height, frame.BitDepth, frame.Pixels),
+                        opts);
+
+                    // UI-thread safe (weil ConfigureAwait(false))
+                    await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+                    {
+                        LastCapturedImage = preview;
+                        StatusText = "Building IImageData…";
+                    });
                 }
+
 
                 var imageData = imgFactory.CreateBaseImageData(
                     input: packed,
@@ -1840,6 +1857,18 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             return ms.ToArray();
         }
 
+        // ctor: IPreviewRenderService injizieren oder new PreviewRenderService();
+        private readonly IPreviewRenderService previewRenderService = new PreviewRenderService();
+
+        public BitmapSource? SolvedPreviewImage { get; private set; }
+
+        public bool PreviewDebayerEnabled { get; set; } = true;
+        public bool PreviewAutoStretchEnabled { get; set; } = true;
+        public bool PreviewUnlinkedStretchEnabled { get; set; } = false;
+
+
+        // Web API Helpers
+
         private void EnsureApiHostState() {
             
             bool enabled;
@@ -1886,7 +1915,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             Logger.Info("[PlateSolvePlus] EnsureApiHostState -> already running (maybe restart check)");
 
         }
-
 
 #if DEBUG
         private static void DebugDumpSyncSlewMethods(string label, object obj) {

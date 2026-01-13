@@ -4,7 +4,9 @@ using EmbedIO.Routing;
 using EmbedIO.WebApi;
 using EmbedIO.WebSockets;
 using NINA.Core.Utility;
+using NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables;
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
@@ -293,6 +295,75 @@ namespace NINA.Plugins.PlateSolvePlus.Services.Api {
             var json = JsonSerializer.Serialize(obj, new JsonSerializerOptions { WriteIndented = false });
             await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
         }
+
+        // Camera Interface
+        [Route(HttpVerbs.Get, "/platesolveplus/secondary/drivers")]
+        public async Task GetSecondaryDrivers() {
+            var drivers = _dockable.AscomDiscovery.GetCameras();
+            await JsonAsync(drivers);
+        }
+
+        [Route(HttpVerbs.Get, "/platesolveplus/secondary/selection")]
+        public async Task GetSecondarySelection() {
+            var svc = _dockable.SecondaryCameraService; // Beispiel
+            await JsonAsync(new { progId = svc?.ProgId, connected = svc?.IsConnected ?? false });
+        }
+
+        public sealed class SelectSecondaryRequest { public string? progId { get; set; } }
+
+        [Route(HttpVerbs.Put, "/platesolveplus/secondary/selection")]
+        public async Task SetSecondarySelection() {
+            var req = await HttpContext.GetRequestDataAsync<SelectSecondaryRequest>();
+            var progId = req?.progId?.Trim();
+
+            if (string.IsNullOrWhiteSpace(progId)) {
+                HttpContext.Response.StatusCode = 400;
+                await JsonAsync(new { ok = false, error = "progId is required." });
+                return;
+            }
+
+            var svc = _dockable.SecondaryCameraService;
+            if (svc != null && svc.IsConnected) {
+                HttpContext.Response.StatusCode = 409;
+                await JsonAsync(new { ok = false, error = "Disconnect secondary camera before changing driver." });
+                return;
+            }
+
+           
+            await JsonAsync(new { ok = true, progId });
+        }
+
+        [Route(HttpVerbs.Post, "/platesolveplus/secondary/connect")]
+        public async Task SecondaryConnect() {
+            var svc = _dockable.SecondaryCameraService;
+            if (svc == null) { HttpContext.Response.StatusCode = 409; await JsonAsync(new { ok = false, error = "No driver selected." }); return; }
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await svc.ConnectAsync(cts.Token);
+
+            await JsonAsync(new { ok = true, connected = svc.IsConnected, progId = svc.ProgId });
+        }
+
+        [Route(HttpVerbs.Post, "/platesolveplus/secondary/disconnect")]
+        public async Task SecondaryDisconnect() {
+            var svc = _dockable.SecondaryCameraService;
+            if (svc == null) { await JsonAsync(new { ok = true, connected = false }); return; }
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await svc.DisconnectAsync(cts.Token);
+
+            await JsonAsync(new { ok = true, connected = svc.IsConnected, progId = svc.ProgId });
+        }
+
+        [Route(HttpVerbs.Post, "/platesolveplus/secondary/setup-dialog")]
+        public async Task SecondarySetupDialog() {
+            var svc = _dockable.SecondaryCameraService;
+            if (svc == null) { HttpContext.Response.StatusCode = 409; await JsonAsync(new { ok = false, error = "No driver selected." }); return; }
+
+            var ok = await svc.OpenSetupDialogAsync(); // nutzt STA already :contentReference[oaicite:4]{index=4}
+            await JsonAsync(new { ok });
+        }
+
     }
 
     // ============================================================
@@ -386,4 +457,5 @@ namespace NINA.Plugins.PlateSolvePlus.Services.Api {
         }
 
     }
+
 }

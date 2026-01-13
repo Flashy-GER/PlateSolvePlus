@@ -11,9 +11,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>  <!-- Header / Status -->
             <RowDefinition Height="Auto"/>  <!-- Camera selection / buttons -->
-            <RowDefinition Height="Auto"/>  <!-- Solve texts -->
-            <RowDefinition Height="Auto"/>  <!-- Readonly settings -->
-            <RowDefinition Height="*"/>     <!-- Image preview -->
+            <RowDefinition Height="*"/>     <!-- Two-column content area -->
         </Grid.RowDefinitions>
 
         <!-- =========================
@@ -69,14 +67,14 @@
                             Margin="0,0,8,8"
                             Command="{Binding DisconnectSecondaryCommand}"/>
 
-                    <!-- NEW: Capture only -->
+                    <!-- Capture only -->
                     <Button Content="Capture"
                             Width="110"
                             Margin="0,0,8,8"
                             Command="{Binding CaptureOnlyCommand}"
                             IsEnabled="{Binding CanCaptureAndSolve}"/>
 
-                    <!-- Existing: Capture + Sync/Slew -->
+                    <!-- Capture + Sync/Slew -->
                     <Button Content="{Binding CaptureAndSolveButtonText}"
                             Width="140"
                             Margin="0,0,8,8"
@@ -110,83 +108,150 @@
         </GroupBox>
 
         <!-- =========================
-             Solve Texts (3 lines)
+             Two-column content area
+             Left: Solve + Settings
+             Right: Image Preview (Solved Image)
              ========================= -->
-        <GroupBox Grid.Row="2" Header="Solve Output" Margin="0,0,0,10">
-            <StackPanel Margin="10">
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*"/>
+                <ColumnDefinition Width="3*"/>
+            </Grid.ColumnDefinitions>
 
-                <!-- 1) Last guider solve text -->
-                <TextBlock Text="{Binding LastGuiderSolveText}"
-                           TextWrapping="Wrap"
-                           Margin="0,0,0,8"/>
+            <!-- LEFT COLUMN -->
+            <ScrollViewer Grid.Column="0"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled"
+                          Margin="0,0,10,0">
+                <StackPanel>
 
-                <!-- 2) Last solve result (raw / summary) -->
-                <TextBox Text="{Binding LastSolveSummary}"
-                         TextWrapping="Wrap"
-                         IsReadOnly="True"
-                         VerticalScrollBarVisibility="Auto"
-                         Height="110"
-                         Margin="0,0,0,8"/>
+                    <!-- Solve Output -->
+                    <GroupBox Header="Solve Output" Margin="0,0,0,10">
+                        <StackPanel Margin="10">
 
-                <!-- 3) corrected coordinates after offset -->
-                <TextBlock Text="{Binding CorrectedSolveText}"
-                           TextWrapping="Wrap"/>
-            </StackPanel>
-        </GroupBox>
+                            <!-- 1) Last guider solve text -->
+                            <TextBlock Text="{Binding LastGuiderSolveText}"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,8"/>
 
-        <!-- =========================
-             Readonly camera settings
-             ========================= -->
-        <GroupBox Grid.Row="3" Header="Camera settings (readonly from Options)" Margin="0,0,0,10">
-            <Grid Margin="10">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="220"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
+                            <!-- 2) Last solve result (raw / summary) -->
+                            <TextBox Text="{Binding LastSolveSummary}"
+                                     TextWrapping="Wrap"
+                                     IsReadOnly="True"
+                                     VerticalScrollBarVisibility="Auto"
+                                     Height="110"
+                                     Margin="0,0,0,8"/>
 
-                <TextBlock Grid.Row="0" Grid.Column="0" Text="Exposure (sec)" VerticalAlignment="Center"/>
-                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding GuideExposureSeconds}"/>
+                            <!-- 3) corrected coordinates after offset -->
+                            <TextBlock Text="{Binding CorrectedSolveText}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </GroupBox>
 
-                <TextBlock Grid.Row="1" Grid.Column="0" Text="Gain (-1 = Auto)" VerticalAlignment="Center"/>
-                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding GuideGain}"/>
+                    <!-- Readonly camera settings -->
+                    <GroupBox Header="Camera settings" Margin="0,0,0,10">
+                        <Grid Margin="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="220"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
 
-                <TextBlock Grid.Row="2" Grid.Column="0" Text="Binning" VerticalAlignment="Center"/>
-                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding GuideBinning}"/>
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Exposure (sec)" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding GuideExposureSeconds}"/>
 
-                <TextBlock Grid.Row="3" Grid.Column="0" Text="Focal Length (mm)" VerticalAlignment="Center"/>
-                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding GuideFocalLengthMm}"/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Gain (-1 = Auto)" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding GuideGain}"/>
 
-                <TextBlock Grid.Row="4" Grid.Column="0" Text="Pixel Size (µm)" VerticalAlignment="Center"/>
-                <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding GuidePixelSizeUm}"/>
-            </Grid>
-        </GroupBox>
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Binning" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding GuideBinning}"/>
 
-        <!-- =========================
-             Image preview (stretched)
-             ========================= -->
-        <GroupBox Grid.Row="4" Header="Image Preview">
-            <Border Margin="10"
-                    BorderThickness="1"
-                    BorderBrush="#33000000"
-                    CornerRadius="4"
-                    Padding="6">
-                <Grid>
-                    <!-- Background checker/placeholder feel -->
-                    <Border Background="#08000000"/>
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Focal Length (mm)" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding GuideFocalLengthMm}"/>
 
-                    <Image Source="{Binding LastCapturedImage}"
-                           Stretch="Uniform"
-                           RenderOptions.BitmapScalingMode="HighQuality"/>
+                            <TextBlock Grid.Row="4" Grid.Column="0" Text="Pixel Size (µm)" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding GuidePixelSizeUm}"/>
+                        </Grid>
+                    </GroupBox>
+
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- RIGHT COLUMN: Image Preview -->
+            <GroupBox Grid.Column="1" Header="Image Preview (Solved Image)">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Preview options (rendering happens in VM/service) -->
+                    <WrapPanel Grid.Row="0" Margin="0,0,0,8">
+                    <TextBlock Text="Auto Stretch on/off" Margin="0,0,0,4"/>
+
+                        <CheckBox Content="Auto Stretch"
+                                  IsChecked="{Binding PreviewAutoStretchEnabled}"
+                                  ToolTip="Auto Stretch muss im ViewModel/Service gerendert werden."/>
+                    </WrapPanel>
+
+                    <Border Grid.Row="1"
+                            BorderThickness="1"
+                            BorderBrush="#33000000"
+                            CornerRadius="4"
+                            Padding="6">
+                        <Grid>
+                            <!-- Background placeholder feel -->
+                            <Border Background="#08000000"/>
+
+                            <Image Stretch="Uniform"
+                                   RenderOptions.BitmapScalingMode="HighQuality">
+                                <Image.Source>
+                                    <PriorityBinding>
+                                        <Binding Path="CapturedFrame"/>
+                                        <Binding Path="LastCapturedImage"/>
+                                    </PriorityBinding>
+                                </Image.Source>
+                            </Image>
+
+                            <!-- No image hint -->
+                            <TextBlock Text="No solved image yet…"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       Opacity="0.55"
+                                       FontStyle="Italic">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <MultiDataTrigger>
+                                                <MultiDataTrigger.Conditions>
+                                                    <Condition Binding="{Binding SolvedPreviewImage}" Value="{x:Null}"/>
+                                                    <Condition Binding="{Binding LastCapturedImage}" Value="{x:Null}"/>
+                                                </MultiDataTrigger.Conditions>
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </MultiDataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
+                    </Border>
+
+                    <TextBlock Grid.Row="2"
+                               Margin="0,8,0,0"
+                               Text="{Binding PreviewInfoText}"
+                               Opacity="0.8"/>
                 </Grid>
-            </Border>
-        </GroupBox>
+            </GroupBox>
+
+        </Grid>
 
     </Grid>
 </UserControl>
