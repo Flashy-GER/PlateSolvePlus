@@ -156,6 +156,35 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             }
         }
 
+        // ===== Mount connection state (single source of truth: RA/Dec availability) =====
+        private bool isMountConnected;
+        public bool IsMountConnected {
+            get => isMountConnected;
+            private set {
+                if (isMountConnected == value) return;
+                isMountConnected = value;
+                RaisePropertyChanged(nameof(IsMountConnected));
+                RaisePropertyChanged(nameof(MountStatusText));
+                CommandManager.InvalidateRequerySuggested();
+            }
+        }
+
+        public string MountStatusText =>
+            IsMountConnected ? "Mount: Verbunden ✅" : "Mount: Nicht verbunden ❌";
+
+        private void RefreshMountState() {
+            if (TelescopeReferenceService == null) {
+                IsMountConnected = false;
+                return;
+            }
+
+            if (TelescopeReferenceService.TryGetCurrentRaDec(out _, out _)) {
+                IsMountConnected = true;
+            } else {
+                IsMountConnected = false;
+            }
+        }
+
         // Offset settings (persistent; shared with Options)
         private PlateSolvePlusSettings FallbackSettings { get; } = new PlateSolvePlusSettings();
 
@@ -341,6 +370,9 @@ try { TelescopeReferenceService.ReferenceUpdated -= TelescopeReferenceService_Re
             lastTelescopeRefreshUtc = DateTime.UtcNow;
             RaisePropertyChanged(nameof(LastTelescopeRefreshText));
 
+            // 🔑 Mount connection state = RA/Dec availability
+            IsMountConnected = e.Success && e.RaDeg.HasValue && e.DecDeg.HasValue;
+
             TelescopeCoordsStatusText = $"{e.StatusText}  |  UTC: {LastTelescopeRefreshText}";
 
             if (!e.Success || !e.RaDeg.HasValue || !e.DecDeg.HasValue) {
@@ -370,6 +402,7 @@ try { TelescopeReferenceService.ReferenceUpdated -= TelescopeReferenceService_Re
                         TelescopeMediator == null ? "ITelescopeMediator not available." : "Could not read telescope coordinates.",
                         null, null));
             }
+            RefreshMountState();
         }
 
         // ============================
@@ -393,11 +426,9 @@ try { TelescopeReferenceService.ReferenceUpdated -= TelescopeReferenceService_Re
         private bool CanCalibrate() {
             if (!importsReady) return false;
             if (!lastGuiderSolveDeg.HasValue) return false;
+            if (!IsMountConnected) return false;
 
-            if (UseMainScopeSolveAsMainRef)
-                return MainReferenceReady && TelescopeMediator != null;
-
-            return TelescopeMediator != null;
+            return UseMainScopeSolveAsMainRef ? MainReferenceReady && TelescopeMediator != null : TelescopeMediator != null;
         }
 
         private void CalibrateOffset() {
