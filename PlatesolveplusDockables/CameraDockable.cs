@@ -290,29 +290,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         }
 
 
-        // ===== Slew-to-target inputs (main coordinates in degrees) =====
-        private double targetRaDeg = double.NaN;
-        public double TargetRaDeg {
-            get => targetRaDeg;
-            set {
-                if (double.IsNaN(targetRaDeg) && double.IsNaN(value)) return;
-                if (!double.IsNaN(targetRaDeg) && Math.Abs(targetRaDeg - value) < 1e-9) return;
-                targetRaDeg = value;
-                RaisePropertyChanged(nameof(TargetRaDeg));
-            }
-        }
-
-        private double targetDecDeg = double.NaN;
-        public double TargetDecDeg {
-            get => targetDecDeg;
-            set {
-                if (double.IsNaN(targetDecDeg) && double.IsNaN(value)) return;
-                if (!double.IsNaN(targetDecDeg) && Math.Abs(targetDecDeg - value) < 1e-9) return;
-                targetDecDeg = value;
-                RaisePropertyChanged(nameof(TargetDecDeg));
-            }
-        }
-
         private bool HasValidTarget => IsValidRaDec(TargetRaDeg, TargetDecDeg);
         // internal cached solves
         private (double raDeg, double decDeg)? lastGuiderSolveDeg;
@@ -334,6 +311,32 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
       // NEW: Slew to a given main target (deg) and then center using secondary + offset mapping
         public ICommand SlewToTargetAndCenterCommand { get; }
+
+        // ===== Target coordinates (Main) for "Slew to Target + Center" =====
+        private double targetRaDeg = 0.0;
+        public double TargetRaDeg {
+            get => targetRaDeg;
+            set {
+                var v = NormalizeRaDeg(value);
+                if (Math.Abs(targetRaDeg - v) < 1e-9) return;
+                targetRaDeg = v;
+                RaisePropertyChanged(nameof(TargetRaDeg));
+                RaiseCaptureCalibrateUiState();
+            }
+        }
+
+        private double targetDecDeg = 0.0;
+        public double TargetDecDeg {
+            get => targetDecDeg;
+            set {
+                var v = Math.Max(-90.0, Math.Min(90.0, value));
+                if (Math.Abs(targetDecDeg - v) < 1e-9) return;
+                targetDecDeg = v;
+                RaisePropertyChanged(nameof(TargetDecDeg));
+                RaiseCaptureCalibrateUiState();
+            }
+        }
+
         // ===== View bindings compatibility =====
         public bool UseSlewInsteadOfSync {
             get => useSlewInsteadOfSync;
@@ -380,7 +383,11 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             !HasOffsetSet;
 
         private void RaiseCaptureCalibrateUiState() {
+            RaisePropertyChanged(nameof(CanCaptureOnly));
+            RaisePropertyChanged(nameof(CanCenterWithOffset));
             RaisePropertyChanged(nameof(CanCaptureAndSolve));
+            RaisePropertyChanged(nameof(CanCaptureAndSolveAction));
+            RaisePropertyChanged(nameof(CanSlewToTargetAndCenter));
             RaisePropertyChanged(nameof(CanCalibrateOffset));
             RaisePropertyChanged(nameof(CaptureAndSolveButtonText));
         }
@@ -394,6 +401,30 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 RaiseCaptureCalibrateUiState();
             }
         }
+
+        // Capture-only should work without mount coordinates (pure solve).
+        public bool CanCaptureOnly =>
+            importsReady &&
+            IsSecondaryConnected;
+
+        // "Center" (Capture + Slew) requires an active + calibrated offset AND mount coords.
+        public bool CanCenterWithOffset =>
+            importsReady &&
+            MountState == MountConnectionState.ConnectedWithCoords &&
+            IsSecondaryConnected &&
+            OffsetEnabled &&
+            HasOffsetSet;
+
+        // Single enable flag for the Capture+Sync/Slew button in the view.
+        // - Sync mode: CanCaptureAndSolve
+        // - Center mode: CanCenterWithOffset
+        public bool CanCaptureAndSolveAction =>
+            UseSlewInsteadOfSync ? CanCenterWithOffset : CanCaptureAndSolve;
+
+        // Enable flag for the "Slew to Target + Center" button.
+        public bool CanSlewToTargetAndCenter =>
+            CanCenterWithOffset &&
+            IsValidRaDec(TargetRaDeg, TargetDecDeg);
 
         private void UpdateConnectionStateFromService() {
             try { IsSecondaryConnected = SecondaryCameraService.IsConnected; } catch { IsSecondaryConnected = false; }
@@ -1907,7 +1938,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 return;
             }
 
-            if (!HasValidTarget) {
+            if (!IsValidRaDec(TargetRaDeg, TargetDecDeg)) {
                 StatusText = "Invalid target ❌";
                 DetailsText = "Please set TargetRaDeg (0..360) and TargetDecDeg (-90..+90) in degrees.";
                 return;

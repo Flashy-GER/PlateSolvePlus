@@ -252,6 +252,91 @@ namespace NINA.Plugins.PlateSolvePlus.Services.Api {
             await JsonAsync(new { jobId, result, previewUrl = "/api/platesolveplus/preview/latest.jpg", status });
         }
 
+
+        // ============================================================
+        // New Actions (Sync / Center / Target Center)
+        // ============================================================
+
+        [Route(HttpVerbs.Post, "/platesolveplus/sync")]
+        public async Task CaptureAndSync() {
+            var jobId = Guid.NewGuid().ToString("N");
+            await _ws.BroadcastAsync(new PlateSolvePlusWsEvent("SyncStarted", new { jobId, utc = DateTime.UtcNow }));
+
+            var result = await RunOnUiAsync(() => _dockable.ApiCaptureAndSyncAsync());
+            var status = await RunOnUiAsync(() => _dockable.GetApiStatusObject());
+
+            await _ws.BroadcastAsync(new PlateSolvePlusWsEvent("SyncFinished", new { jobId, result, utc = DateTime.UtcNow, status }));
+            await JsonAsync(new { jobId, result, status });
+        }
+
+        [Route(HttpVerbs.Post, "/platesolveplus/center")]
+        public async Task CaptureAndCenter() {
+            var jobId = Guid.NewGuid().ToString("N");
+            await _ws.BroadcastAsync(new PlateSolvePlusWsEvent("CenterStarted", new { jobId, utc = DateTime.UtcNow }));
+
+            var result = await RunOnUiAsync(() => _dockable.ApiCaptureAndCenterAsync());
+            var status = await RunOnUiAsync(() => _dockable.GetApiStatusObject());
+
+            await _ws.BroadcastAsync(new PlateSolvePlusWsEvent("CenterFinished", new { jobId, result, utc = DateTime.UtcNow, status }));
+            await JsonAsync(new { jobId, result, status });
+        }
+
+        public sealed class SetTargetRequest {
+            public double? raDeg { get; set; }
+            public double? decDeg { get; set; }
+        }
+
+        [Route(HttpVerbs.Get, "/platesolveplus/target")]
+        public async Task GetTarget() {
+            var ra = await RunOnUiAsync(() => _dockable.TargetRaDeg);
+            var dec = await RunOnUiAsync(() => _dockable.TargetDecDeg);
+            await JsonAsync(new { targetRaDeg = ra, targetDecDeg = dec });
+        }
+
+
+        [Route(HttpVerbs.Put, "/platesolveplus/target")]
+        public async Task SetTarget() {
+            var req = await HttpContext.GetRequestDataAsync<SetTargetRequest>();
+            var ra = req?.raDeg;
+            var dec = req?.decDeg;
+
+            if (!ra.HasValue || !dec.HasValue) {
+                HttpContext.Response.StatusCode = 400;
+                await JsonAsync(new { ok = false, error = "raDeg and decDeg are required (degrees)." });
+                return;
+            }
+
+            await RunOnUiAsync(() => {
+                _dockable.TargetRaDeg = ra.Value;
+                _dockable.TargetDecDeg = dec.Value;
+                return true;
+            });
+
+            await JsonAsync(new { ok = true, targetRaDeg = ra.Value, targetDecDeg = dec.Value });
+        }
+
+        [Route(HttpVerbs.Post, "/platesolveplus/target/center")]
+        public async Task SlewTargetAndCenter() {
+            var req = await HttpContext.GetRequestDataAsync<SetTargetRequest>();
+            var ra = req?.raDeg;
+            var dec = req?.decDeg;
+
+            if (!ra.HasValue || !dec.HasValue) {
+                HttpContext.Response.StatusCode = 400;
+                await JsonAsync(new { ok = false, error = "raDeg and decDeg are required (degrees)." });
+                return;
+            }
+
+            var jobId = Guid.NewGuid().ToString("N");
+            await _ws.BroadcastAsync(new PlateSolvePlusWsEvent("TargetCenterStarted", new { jobId, targetRaDeg = ra.Value, targetDecDeg = dec.Value, utc = DateTime.UtcNow }));
+
+            var result = await RunOnUiAsync(() => _dockable.ApiSlewToTargetAndCenterAsync(ra.Value, dec.Value));
+            var status = await RunOnUiAsync(() => _dockable.GetApiStatusObject());
+
+            await _ws.BroadcastAsync(new PlateSolvePlusWsEvent("TargetCenterFinished", new { jobId, result, utc = DateTime.UtcNow, status }));
+            await JsonAsync(new { jobId, result, status });
+        }
+
         [Route(HttpVerbs.Post, "/platesolveplus/offset/calibrate")]
         public async Task CalibrateOffset() {
             var jobId = Guid.NewGuid().ToString("N");
