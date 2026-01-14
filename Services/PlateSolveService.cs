@@ -1,9 +1,9 @@
 ﻿using NINA.Image.ImageData;
 using NINA.Image.Interfaces;
 using NINA.PlateSolving.Interfaces;
+using NINA.Plugins.PlateSolvePlus.Models;
 using NINA.Plugins.PlateSolvePlus.PlateSolving;
 using NINA.Plugins.PlateSolvePlus.Utils;
-using NINA.Plugins.PlateSolvePlus.Models;
 using NINA.Profile.Interfaces;
 using System;
 using System.Reflection;

@@ -12,7 +12,6 @@ using NINA.Plugins.PlateSolvePlus.Utils;
 using NINA.Profile.Interfaces;
 using NINA.WPF.Base.ViewModel;
 using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.ComponentModel.Composition;
@@ -77,14 +76,8 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         private string? apiTokenState;
         private bool apiStateInitialized;
 
-        // Cache für letzte laufende Config (damit wir nicht dauernd restarten)
-        private bool lastApiEnabled;
-        private int lastApiPort;
-        private bool lastApiRequireToken;
-        private string? lastApiToken;
-
         internal IAscomDeviceDiscoveryService AscomDiscovery => Context.AscomDiscovery;
-        internal ISecondaryCameraService SecondaryCameraService => Context.GetActiveSecondaryCameraService();
+        internal ISecondaryCameraService SecondaryCameraService => EnsureSecondaryCameraService();
 
         // ===== Dropdown =====
         public ObservableCollection<AscomDeviceInfo> SecondaryCameraDevices { get; } =
@@ -98,6 +91,8 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 selectedSecondaryCamera = value;
                 RaisePropertyChanged(nameof(SelectedSecondaryCamera));
                 SelectedSecondaryCameraProgId = selectedSecondaryCamera?.ProgId;
+                _ = EnsureSecondaryCameraService();
+                UpdateConnectionStateFromService();
             }
         }
 
@@ -115,9 +110,33 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
                 Context.SetActiveSecondaryCameraProgId(progId);
                 Context.CurrentSecondaryCameraProgId = progId;
+                // refresh cached service instance so subsequent calls use the same object
+                _ = EnsureSecondaryCameraService();
 
                 UpdateConnectionStateFromService();
             }
+        }
+
+        private ISecondaryCameraService? secondaryCameraServiceCached;
+        private string? secondaryCameraProgIdCached;
+
+        private ISecondaryCameraService EnsureSecondaryCameraService() {
+            var desired = SelectedSecondaryCameraProgId
+                ?? Context.CurrentSecondaryCameraProgId
+                ?? FallbackSecondaryCameraProgId;
+
+            if (secondaryCameraServiceCached != null &&
+                string.Equals(secondaryCameraProgIdCached, desired, StringComparison.OrdinalIgnoreCase)) {
+                return secondaryCameraServiceCached;
+            }
+
+            // driver changed → dispose old instance (should be disconnected already)
+            try { secondaryCameraServiceCached?.Dispose(); } catch { }
+
+            secondaryCameraServiceCached = new SecondaryCameraService(desired);
+            secondaryCameraProgIdCached = desired;
+
+            return secondaryCameraServiceCached;
         }
 
         // ============================================================
@@ -482,8 +501,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
                 StatusText = "Ready";
                 RefreshSecondaryCameraList();
-                UpdateConnectionStateFromService();
-
                 HookPluginSettings();
                 HookSettingsBus();
 
@@ -494,6 +511,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
                 ApplySettings(ReadSettingsFromPluginInstance(), force: true);
                 UpdateMountConnectionState();
+                UpdateConnectionStateFromService();
 
                 // ---- API state init (one time) ----
                 var s = PluginSettings?.Settings;
@@ -532,6 +550,10 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             if (profileService != null) {
                 profileService.ProfileChanged -= ProfileService_ProfileChanged;
             }
+            try { secondaryCameraServiceCached?.Dispose(); } catch { }
+            secondaryCameraServiceCached = null;
+            secondaryCameraProgIdCached = null;
+
         }
 
         private void ProfileService_ProfileChanged(object? sender, EventArgs e) {
@@ -905,12 +927,32 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         private async Task CaptureAndSyncOrSlewAsync() {
             UpdateMountConnectionState();
 
+            if (MountState != MountConnectionState.ConnectedWithCoords) {
+                StatusText = "Mount not ready ❌";
+                DetailsText = "Mount not connected OR coordinates not available.";
+                return;
+            }
+
+            if (!IsSecondaryConnected) {
+                StatusText = "Secondary camera not connected ❌";
+                DetailsText = "Click Connect first.";
+                return;
+            }
+
             var solve = await CaptureAndSolveGuiderAsync(updateUi: true).ConfigureAwait(false);
             if (!solve.success) return;
+
+            // remember guider solve (for UI)
+            lastGuiderSolveDeg = (solve.raDeg, solve.decDeg);
+            LastGuiderSolveText = FormatSolvedLine("Guider", solve.raDeg, solve.decDeg);
 
             // compute corrected (only if enabled + set)
             lastCorrectedSolveDeg = ComputeCorrectedIfEnabled(solve.raDeg, solve.decDeg);
             var target = lastCorrectedSolveDeg ?? (solve.raDeg, solve.decDeg);
+
+            CorrectedSolveText = lastCorrectedSolveDeg.HasValue
+                ? FormatSolvedLine("Corrected", lastCorrectedSolveDeg.Value.raDeg, lastCorrectedSolveDeg.Value.decDeg)
+                : "Corrected: (Offset disabled or not set) → using guider solve as-is.";
 
             if (!TryToCoordinates(target.raDeg, target.decDeg, out var targetCoords)) {
                 return;
@@ -922,6 +964,29 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
                 await CenterWithSecondaryAsync(thr, max, CancellationToken.None).ConfigureAwait(false);
                 return;
+            }
+
+            // Capture + Sync: sync mount to the (optionally corrected) solved coordinates
+            if (TelescopeMediator == null) {
+                StatusText = "Cannot sync mount ❌";
+                DetailsText = "TelescopeMediator not available (MEF import failed).";
+                return;
+            }
+
+            try {
+                StatusText = "Syncing mount…";
+                DetailsText = $"SyncTo: RA={target.raDeg:0.######}°, Dec={target.decDeg:0.######}°";
+
+                var ok = await TelescopeMediator.Sync(targetCoords).ConfigureAwait(false);
+
+                StatusText = ok ? "Capture + Sync done ✅" : "Sync failed ❌";
+                DetailsText = ok
+                    ? $"Mount synced to {(lastCorrectedSolveDeg.HasValue ? "corrected" : "solved")} coordinates." +
+                      $"\nRA={target.raDeg:0.######}°, Dec={target.decDeg:0.######}°"
+                    : $"Sync returned false. Target was: RA={target.raDeg:0.######}°, Dec={target.decDeg:0.######}°";
+            } catch (Exception ex) {
+                StatusText = "Sync failed ❌";
+                DetailsText = ex.ToString();
             }
         }
 
@@ -1065,6 +1130,9 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                     if (updateUi) {
                         StatusText = "Secondary camera not connected ❌";
                         DetailsText = "Click Connect first.";
+
+                        // refresh cached service instance so subsequent calls use the same object
+                        _ = EnsureSecondaryCameraService();
                         UpdateConnectionStateFromService();
                     }
                     return (false, 0, 0);
@@ -1334,13 +1402,17 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 Context.SetActiveSecondaryCameraProgId(progId);
                 Context.CurrentSecondaryCameraProgId = progId;
 
+                // Ensure correct cached instance BEFORE connecting
+                var svc = EnsureSecondaryCameraService();
+
                 StatusText = "Connecting secondary camera...";
-                DetailsText = $"ProgID: {SecondaryCameraService.ProgId}";
+                DetailsText = $"ProgID: {svc.ProgId}";
 
-                await SecondaryCameraService.ConnectAsync(CancellationToken.None);
+                await svc.ConnectAsync(CancellationToken.None);
+
                 UpdateConnectionStateFromService();
-
                 StatusText = IsSecondaryConnected ? "Secondary camera connected ✅" : "Secondary camera not connected ❌";
+
             } catch (Exception ex) {
                 StatusText = "Connect failed ❌";
                 DetailsText = ex.ToString();
@@ -1354,6 +1426,8 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             try {
                 StatusText = "Disconnecting secondary camera...";
                 await SecondaryCameraService.DisconnectAsync(CancellationToken.None);
+                // refresh cached service instance so subsequent calls use the same object
+                _ = EnsureSecondaryCameraService();
                 UpdateConnectionStateFromService();
                 StatusText = "Disconnected ✅";
             } catch (Exception ex) {

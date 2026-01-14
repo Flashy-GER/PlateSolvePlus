@@ -305,8 +305,12 @@ namespace NINA.Plugins.PlateSolvePlus.Services.Api {
 
         [Route(HttpVerbs.Get, "/platesolveplus/secondary/selection")]
         public async Task GetSecondarySelection() {
-            var svc = _dockable.SecondaryCameraService; // Beispiel
-            await JsonAsync(new { progId = svc?.ProgId, connected = svc?.IsConnected ?? false });
+            var svc = _dockable.SecondaryCameraService;
+            await JsonAsync(new {
+                progId = _dockable.SelectedSecondaryCameraProgId ?? svc?.ProgId,
+                connected = svc?.IsConnected ?? false
+            });
+
         }
 
         public sealed class SelectSecondaryRequest { public string? progId { get; set; } }
@@ -329,30 +333,49 @@ namespace NINA.Plugins.PlateSolvePlus.Services.Api {
                 return;
             }
 
-           
-            await JsonAsync(new { ok = true, progId });
+            await RunOnUiAsync(() => {
+                _dockable.SelectedSecondaryCameraProgId = progId;
+                _dockable.RefreshSecondaryCameraListCommand?.Execute(null);
+                return Task.CompletedTask;
+            });
+
+            var svc2 = _dockable.SecondaryCameraService;
+            await JsonAsync(new {
+                ok = true,
+                progId = svc2?.ProgId ?? progId,
+                connected = svc2?.IsConnected ?? false
+            });
         }
 
         [Route(HttpVerbs.Post, "/platesolveplus/secondary/connect")]
         public async Task SecondaryConnect() {
-            var svc = _dockable.SecondaryCameraService;
-            if (svc == null) { HttpContext.Response.StatusCode = 409; await JsonAsync(new { ok = false, error = "No driver selected." }); return; }
+            await RunOnUiAsync(async () => {
+                var svc = _dockable.SecondaryCameraService;
+                if (svc == null) { HttpContext.Response.StatusCode = 409; await JsonAsync(new { ok = false, error = "No driver selected." }); return; }
 
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            await svc.ConnectAsync(cts.Token);
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                await svc.ConnectAsync(cts.Token);
 
-            await JsonAsync(new { ok = true, connected = svc.IsConnected, progId = svc.ProgId });
+                // sync dockable state so /status reflects reality
+                _dockable.RefreshSecondaryCameraListCommand?.Execute(null);
+
+                await JsonAsync(new { ok = true, connected = svc.IsConnected, progId = svc.ProgId });
+            });
         }
 
         [Route(HttpVerbs.Post, "/platesolveplus/secondary/disconnect")]
         public async Task SecondaryDisconnect() {
-            var svc = _dockable.SecondaryCameraService;
-            if (svc == null) { await JsonAsync(new { ok = true, connected = false }); return; }
+            await RunOnUiAsync(async () => {
+                var svc = _dockable.SecondaryCameraService;
+                if (svc == null) { await JsonAsync(new { ok = true, connected = false }); return; }
 
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            await svc.DisconnectAsync(cts.Token);
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                await svc.DisconnectAsync(cts.Token);
 
-            await JsonAsync(new { ok = true, connected = svc.IsConnected, progId = svc.ProgId });
+                _dockable.RefreshSecondaryCameraListCommand?.Execute(null);
+
+                await JsonAsync(new { ok = true, connected = svc.IsConnected, progId = svc.ProgId });
+            });
         }
 
         [Route(HttpVerbs.Post, "/platesolveplus/secondary/setup-dialog")]
@@ -435,19 +458,24 @@ namespace NINA.Plugins.PlateSolvePlus.Services.Api {
         protected override Task OnRequestAsync(IHttpContext context) {
             if (!_enabled()) return Task.CompletedTask;
 
-            // Allow CORS preflight
             if (string.Equals(context.Request.HttpMethod, "OPTIONS", StringComparison.OrdinalIgnoreCase))
                 return Task.CompletedTask;
 
             var expected = _tokenProvider();
-
-            // Hardening: if RequireToken is enabled but token is empty, deny all
             if (string.IsNullOrWhiteSpace(expected)) {
                 context.Response.StatusCode = 500;
                 return context.SendStringAsync("Token auth enabled but no token configured.", "text/plain", Encoding.UTF8);
             }
 
+            // 1) header token (REST)
             var token = context.Request.Headers["X-PSP-Token"];
+
+            // 2) query token (WebSocket from browser can't send custom headers)
+            if (string.IsNullOrWhiteSpace(token)) {
+                // EmbedIO provides query via context.Request.QueryString (NameValueCollection)
+                token = context.Request.QueryString["token"];
+            }
+
             if (!string.Equals(token, expected, StringComparison.Ordinal)) {
                 context.Response.StatusCode = 401;
                 return context.SendStringAsync("Unauthorized", "text/plain", Encoding.UTF8);
@@ -455,6 +483,7 @@ namespace NINA.Plugins.PlateSolvePlus.Services.Api {
 
             return Task.CompletedTask;
         }
+
 
     }
 
