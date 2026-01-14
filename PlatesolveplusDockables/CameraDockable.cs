@@ -362,12 +362,11 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             importsReady &&
             IsSecondaryConnected;
 
-        // "Center" (Capture + Slew) requires an active + calibrated offset AND mount coords.
+        // "Center" (Capture + Slew) requires a calibrated offset AND mount coords.
         public bool CanCenterWithOffset =>
             importsReady &&
             MountState == MountConnectionState.ConnectedWithCoords &&
             IsSecondaryConnected &&
-            OffsetEnabled &&
             HasOffsetSet;
 
         // Single enable flag for the Capture+Sync/Slew button in the view.
@@ -384,8 +383,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
         private bool HasOffsetSet {
             get {
-                if (!OffsetEnabled) return false;
-
                 if (OffsetMode == OffsetMode.Rotation) {
                     var isIdentity = Math.Abs(RotationQw - 1.0) < 1e-6 &&
                                      Math.Abs(RotationQx) < 1e-6 &&
@@ -506,21 +503,17 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
         public string OffsetStatusText {
             get {
-                if (!OffsetEnabled) return "Offset disabled";
+                if (!HasOffsetSet) return "Offset not set";
 
                 if (OffsetMode == OffsetMode.Rotation) {
-                    return Math.Abs(RotationQw - 1.0) > 1e-6
-                        ? $"Rotation offset active (qw={RotationQw:0.###})"
-                        : "Rotation offset not set";
+                    return $"Rotation offset set (qw={RotationQw:0.###})";
                 }
 
-                return (Math.Abs(OffsetRaArcsec) + Math.Abs(OffsetDecArcsec)) > 0
-                    ? $"Arcsec offset active (ΔRA={OffsetRaArcsec:0.###}\", ΔDec={OffsetDecArcsec:0.###}\")"
-                    : "Arcsec offset not set";
+                return $"Arcsec offset set (ΔRA={OffsetRaArcsec:0.###}\", ΔDec={OffsetDecArcsec:0.###}\")";
             }
         }
 
-        [ImportingConstructor]
+[ImportingConstructor]
         public CameraDockable(IProfileService profileService) : base(profileService) {
             this.profileService = profileService ?? throw new ArgumentNullException(nameof(profileService));
 
@@ -845,7 +838,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
             CorrectedSolveText = lastCorrectedSolveDeg.HasValue
                 ? FormatSolvedLine("Corrected", lastCorrectedSolveDeg.Value.raDeg, lastCorrectedSolveDeg.Value.decDeg)
-                : "Corrected: (Offset disabled or not set) → using guider solve as-is.";
+                : "Corrected: (No offset set) → using solve as-is.";
         }
 
         private void PluginSettings_PropertyChanged(object? sender, PropertyChangedEventArgs e) {
@@ -973,11 +966,11 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             lastGuiderSolveDeg = (solve.raDeg, solve.decDeg);
             LastGuiderSolveText = FormatSolvedLine("Guider", solve.raDeg, solve.decDeg);
 
-            // corrected preview (only if offset enabled + set)
+            // corrected preview (only if offset is set)
             lastCorrectedSolveDeg = ComputeCorrectedIfEnabled(solve.raDeg, solve.decDeg);
             CorrectedSolveText = lastCorrectedSolveDeg.HasValue
                 ? FormatSolvedLine("Corrected", lastCorrectedSolveDeg.Value.raDeg, lastCorrectedSolveDeg.Value.decDeg)
-                : "Corrected: (Offset disabled or not set) → using guider solve as-is.";
+                : "Corrected: (No offset set) → using solve as-is.";
 
             // CaptureOnly MUST NOT change any state (no auto offset, no sync, no slew)
             // If mount coords are available, compare and suggest recalibration when offset is active.
@@ -999,7 +992,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 var sepArcsec = sepArcmin * 60.0;
 
                 var thrArcmin = PluginSettings?.Settings?.CenteringThresholdArcmin ?? 1.0;
-                var suggestRecal = OffsetEnabled && HasOffsetSet && sepArcmin > thrArcmin;
+                var suggestRecal = HasOffsetSet && sepArcmin > thrArcmin;
 
                 StatusText = suggestRecal ? "CaptureOnly: Offset mismatch ⚠️" : "CaptureOnly done ✅";
 
@@ -1007,7 +1000,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                     $"Mount: RA {AstroFormat.FormatRaHms(mainRaDeg)} / Dec {AstroFormat.FormatDecDms(mainDecDeg)} (deg: {mainRaDeg:0.######}, {mainDecDeg:0.######})" +
                     $"{(lastCorrectedSolveDeg.HasValue ? "Compared(Corrected)" : "Compared(Solved)")}: RA {AstroFormat.FormatRaHms(compare.raDeg)} / Dec {AstroFormat.FormatDecDms(compare.decDeg)} (deg: {compare.raDeg:0.######}, {compare.decDeg:0.######})" +
                     $"Δ: dRA={deltaRaArcsec:+0.0;-0.0;0.0}\"  dDec={deltaDecArcsec:+0.0;-0.0;0.0}\"  Sep={sepArcsec:0.0}\"" +
-                    (OffsetEnabled && !HasOffsetSet ? "Offset is enabled but not calibrated → run Calibrate Offset." : string.Empty) +
+                    (!HasOffsetSet ? "Offset not calibrated → run Calibrate Offset." : string.Empty) +
                     (suggestRecal ? $"Offset likely outdated (Sep>{thrArcmin:0.###} arcmin). Consider recalibrating the offset." : "Offset seems consistent with current mount position.");
             } else {
                 StatusText = "CaptureOnly done ✅";
@@ -1016,11 +1009,9 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                     (MountState == MountConnectionState.ConnectedWithCoords
                         ? "Mount RA/Dec not available via TelescopeReferenceService."
                         : "Mount not connected / coordinates not available → no comparison possible.") +
-                    (OffsetEnabled && !HasOffsetSet ? "Offset is enabled but not calibrated → run Calibrate Offset." : "");
+                    (!HasOffsetSet ? "Offset not calibrated → run Calibrate Offset." : "");
             }
         }
-
-
         private async Task CaptureAndSyncOrSlewAsync() {
             UpdateMountConnectionState();
 
@@ -1049,7 +1040,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
             CorrectedSolveText = lastCorrectedSolveDeg.HasValue
                 ? FormatSolvedLine("Corrected", lastCorrectedSolveDeg.Value.raDeg, lastCorrectedSolveDeg.Value.decDeg)
-                : "Corrected: (Offset disabled or not set) → using guider solve as-is.";
+                : "Corrected: (No offset set) → using solve as-is.";
 
             if (!TryToCoordinates(target.raDeg, target.decDeg, out var targetCoords)) {
                 return;
@@ -1057,9 +1048,9 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
             if (UseSlewInsteadOfSync) {
                 // Capture + Slew (Center) requires an active + calibrated offset
-                if (!(OffsetEnabled && HasOffsetSet)) {
+                if (!HasOffsetSet) {
                     StatusText = "Center not available ❌";
-                    DetailsText = "Capture + Slew (Center) requires an active and calibrated offset.";
+                    DetailsText = "Capture + Slew (Center) requires a calibrated offset.";
                     return;
                 }
 
@@ -1119,7 +1110,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 var svc = new OffsetService();
                 svc.Calibrate(PluginSettings.Settings, mainRaDeg, mainDecDeg, guiderRaDeg, guiderDecDeg);
 
-                PluginSettings.Settings.OffsetEnabled = true;
                 PluginSettings.Settings.OffsetLastCalibratedUtc = DateTime.UtcNow;
 
                 ApplySettings(ReadSettingsFromPluginInstance(), force: false);
@@ -1136,7 +1126,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         }
 
         private (double raDeg, double decDeg)? ComputeCorrectedIfEnabled(double raDeg, double decDeg) {
-            if (!OffsetEnabled) return null;
             if (!HasOffsetSet) return null;
             if (PluginSettings?.Settings == null) return null;
 
@@ -1205,8 +1194,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             var svc = new OffsetService();
             svc.Calibrate(PluginSettings.Settings, mainRaDeg, mainDecDeg, guiderSolve.raDeg, guiderSolve.decDeg);
 
-            PluginSettings.Settings.OffsetEnabled = true;
-            PluginSettings.Settings.OffsetLastCalibratedUtc = DateTime.UtcNow;
+                        PluginSettings.Settings.OffsetLastCalibratedUtc = DateTime.UtcNow;
 
             StatusText = "Offset calibrated ✅";
             DetailsText =
@@ -1219,7 +1207,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             lastCorrectedSolveDeg = ComputeCorrectedIfEnabled(guiderSolve.raDeg, guiderSolve.decDeg);
             CorrectedSolveText = lastCorrectedSolveDeg.HasValue
                 ? FormatSolvedLine("Corrected", lastCorrectedSolveDeg.Value.raDeg, lastCorrectedSolveDeg.Value.decDeg)
-                : "Corrected: (Offset disabled or not set) → using guider solve as-is.";
+                : "Corrected: (No offset set) → using solve as-is.";
         }
 
         private async Task<(bool success, double raDeg, double decDeg)> CaptureAndSolveGuiderAsync(bool updateUi) {
@@ -1822,12 +1810,12 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 return;
             }
 
-            var useOffset = OffsetEnabled && HasOffsetSet && PluginSettings?.Settings != null;
+            var useOffset = HasOffsetSet && PluginSettings?.Settings != null;
 
             // Centering with secondary camera is only valid when an offset is active AND calibrated
             if (!useOffset) {
                 StatusText = "Center not available ❌";
-                DetailsText = "Centering requires an active and calibrated offset (OffsetEnabled + HasOffsetSet).";
+                DetailsText = "Centering requires a calibrated offset (HasOffsetSet).";
                 return;
             }
 
@@ -1938,7 +1926,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 return;
             }
 
-            if (!(OffsetEnabled && HasOffsetSet)) {
+            if (!HasOffsetSet) {
                 StatusText = "Center not available ❌";
                 DetailsText = "Slew to Target + Center requires an active and calibrated offset.";
                 return;
@@ -1986,7 +1974,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 return;
             }
 
-            if (!(OffsetEnabled && HasOffsetSet) || PluginSettings?.Settings == null) {
+            if (!HasOffsetSet || PluginSettings?.Settings == null) {
                 StatusText = "Center not available ❌";
                 DetailsText = "Offset not active or not calibrated.";
                 return;
@@ -2100,7 +2088,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         }
 
         private (double raDeg, double decDeg) MapGuiderToMain(double guiderRaDeg, double guiderDecDeg) {
-            if (!OffsetEnabled || !HasOffsetSet || PluginSettings?.Settings == null) {
+            if (!HasOffsetSet || PluginSettings?.Settings == null) {
                 return (guiderRaDeg, guiderDecDeg);
             }
 
