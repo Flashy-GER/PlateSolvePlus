@@ -215,40 +215,62 @@
                     </GroupBox>
 
                     <!-- ========== Offset ========== -->
-                    <GroupBox Header="Offset" Margin="0,0,0,10" HorizontalAlignment="Left">
-                        <StackPanel Margin="10">
+                        <GroupBox Header="Offset (Secondary → Main)" Margin="0,0,0,10">
+                            <StackPanel Margin="10">
 
-                            <CheckBox Content="Offset verwenden"
-                                      ToolTip="Wenn aktiv: Guider-Solve wird über Offset-Modell auf Main-Sky gemappt."
-                                      IsChecked="{Binding Settings.OffsetEnabled, UpdateSourceTrigger=PropertyChanged}"
-                                      Margin="0,0,0,10"/>
+                                <!-- Status -->
+                                <TextBlock FontWeight="SemiBold"
+                                           Text="{Binding OffsetStatusText}" />
 
-                            <StackPanel Style="{StaticResource FormRow}">
-                                <TextBlock Style="{StaticResource FormRowLabel}"
-                                           Text="Mode"
-                                           ToolTip="Rotation: nicht-koaxiale Anordnung. Arcsec: klassische ΔRA/ΔDec."/>
-                                <ComboBox Width="220"
-                                          ToolTip="0=Rotation, 1=Arcsec"
-                                          SelectedIndex="{Binding Settings.OffsetModeInt, UpdateSourceTrigger=PropertyChanged}">
-                                    <ComboBoxItem Content="Rotation (recommended)"/>
-                                    <ComboBoxItem Content="Arcsec (ΔRA/ΔDec)"/>
-                                    <ComboBox.Style>
-                                        <Style TargetType="{x:Type ComboBox}">
-                                            <Setter Property="IsEnabled" Value="True"/>
-                                            <Setter Property="Opacity" Value="1"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding Settings.OffsetEnabled}" Value="False">
-                                                    <Setter Property="IsEnabled" Value="False"/>
-                                                    <Setter Property="Opacity" Value="0.6"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </ComboBox.Style>
-                                </ComboBox>
+                                <Separator Margin="0,6"/>
+
+                                <!-- Rotation -->
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Width="180"
+                                               Text="Rotation (Quaternion):" />
+                                    <TextBlock Text="{Binding OffsetQuaternionText}" />
+                                </StackPanel>
+
+                                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                    <TextBlock Width="180"
+                                               Text="Rotationswinkel:" />
+                                    <TextBlock Text="{Binding OffsetRotationDegText}" />
+                                </StackPanel>
+
+                                <Separator Margin="0,6"/>
+
+                                <!-- Translation -->
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Width="180"
+                                               Text="ΔRA:" />
+                                    <TextBlock Text="{Binding OffsetRaArcsecText}" />
+                                </StackPanel>
+
+                                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                    <TextBlock Width="180"
+                                               Text="ΔDec:" />
+                                    <TextBlock Text="{Binding OffsetDecArcsecText}" />
+                                </StackPanel>
+
+                                <Separator Margin="0,6"/>
+
+                                <!-- Timestamp -->
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Width="180"
+                                               Text="Zuletzt kalibriert:" />
+                                    <TextBlock Text="{Binding OffsetLastCalibratedText}" />
+                                </StackPanel>
+
+                                <!-- Reset -->
+                                <Button Content="Offset zurücksetzen"
+                                        Command="{Binding ResetOffsetCommand}"
+                                        Margin="0,10,0,0"
+                                        HorizontalAlignment="Left"
+                                        ToolTip="Setzt Rotation und Offset-Werte vollständig zurück." />
+
                             </StackPanel>
+                        </GroupBox>
 
-                        </StackPanel>
-                    </GroupBox>
 
                     <!-- ========== Touch-N-Stars / Local API ========== -->
 <GroupBox Header="Touch-N-Stars / Local API" Margin="0,0,0,10" HorizontalAlignment="Left">

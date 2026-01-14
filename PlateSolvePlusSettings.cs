@@ -180,37 +180,67 @@ namespace NINA.Plugins.PlateSolvePlus {
         private double offsetRaArcsec = 0.0;
         public double OffsetRaArcsec {
             get => offsetRaArcsec;
-            set { if (Math.Abs(offsetRaArcsec - value) < 0.000001) return; offsetRaArcsec = value; RaisePropertyChanged(); }
+            set {
+                if (Math.Abs(offsetRaArcsec - value) < 0.000001) return;
+                offsetRaArcsec = value;
+                RaisePropertyChanged();
+                RaisePropertyChanged(nameof(HasOffsetSet));
+            }
         }
 
         private double offsetDecArcsec = 0.0;
         public double OffsetDecArcsec {
             get => offsetDecArcsec;
-            set { if (Math.Abs(offsetDecArcsec - value) < 0.000001) return; offsetDecArcsec = value; RaisePropertyChanged(); }
+            set {
+                if (Math.Abs(offsetDecArcsec - value) < 0.000001) return;
+                offsetDecArcsec = value;
+                RaisePropertyChanged();
+                RaisePropertyChanged(nameof(HasOffsetSet));
+            }
         }
 
         private double rotationQw = 1.0;
         public double RotationQw {
             get => rotationQw;
-            set { if (Math.Abs(rotationQw - value) < 0.000001) return; rotationQw = value; RaisePropertyChanged(); }
+            set {
+                if (Math.Abs(rotationQw - value) < 0.000001) return;
+                rotationQw = value;
+                RaisePropertyChanged();
+                RaisePropertyChanged(nameof(HasOffsetSet));
+            }
         }
 
         private double rotationQx = 0.0;
         public double RotationQx {
             get => rotationQx;
-            set { if (Math.Abs(rotationQx - value) < 0.000001) return; rotationQx = value; RaisePropertyChanged(); }
+            set {
+                if (Math.Abs(rotationQx - value) < 0.000001) return;
+                rotationQx = value;
+                RaisePropertyChanged();
+                RaisePropertyChanged(nameof(HasOffsetSet));
+            }
         }
 
         private double rotationQy = 0.0;
         public double RotationQy {
             get => rotationQy;
-            set { if (Math.Abs(rotationQy - value) < 0.000001) return; rotationQy = value; RaisePropertyChanged(); }
+            set {
+                if (Math.Abs(rotationQy - value) < 0.000001) return;
+                rotationQy = value;
+                RaisePropertyChanged();
+                RaisePropertyChanged(nameof(HasOffsetSet));
+            }
         }
 
         private double rotationQz = 0.0;
         public double RotationQz {
             get => rotationQz;
-            set { if (Math.Abs(rotationQz - value) < 0.000001) return; rotationQz = value; RaisePropertyChanged(); }
+            set {
+                if (Math.Abs(rotationQz - value) < 0.000001) return;
+                rotationQz = value;
+                RaisePropertyChanged();
+                RaisePropertyChanged(nameof(HasOffsetSet));
+            }
         }
 
         private DateTime? offsetLastCalibratedUtc;
@@ -223,7 +253,28 @@ namespace NINA.Plugins.PlateSolvePlus {
             }
         }
 
-        public void ResetOffset() {
+        
+
+        /// <summary>
+        /// True when an offset is calibrated (either arcsec deltas are non-zero or rotation quaternion is not identity).
+        /// Useful for UI enable logic and for Options display.
+        /// </summary>
+        public bool HasOffsetSet {
+            get {
+                // Arcsec
+                if (Math.Abs(OffsetRaArcsec) > 0.000001) return true;
+                if (Math.Abs(OffsetDecArcsec) > 0.000001) return true;
+
+                // Quaternion not identity
+                if (Math.Abs(RotationQw - 1.0) > 0.000001) return true;
+                if (Math.Abs(RotationQx) > 0.000001) return true;
+                if (Math.Abs(RotationQy) > 0.000001) return true;
+                if (Math.Abs(RotationQz) > 0.000001) return true;
+
+                return false;
+            }
+        }
+public void ResetOffset() {
             OffsetRaArcsec = 0;
             OffsetDecArcsec = 0;
 

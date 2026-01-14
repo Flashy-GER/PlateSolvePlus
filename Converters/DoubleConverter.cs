@@ -4,7 +4,7 @@ using System.Windows.Data;
 
 namespace NINA.Plugins.PlateSolvePlus.Converters {
     public class DoubleConverter : IValueConverter {
-        public object Convert(object value, Type targetType, object parameter, CultureInfo culture) {
+        public object? Convert(object value, Type targetType, object parameter, CultureInfo culture) {
             return value?.ToString();
         }
 
@@ -13,7 +13,7 @@ namespace NINA.Plugins.PlateSolvePlus.Converters {
                 return Binding.DoNothing;
 
             var text = value.ToString()
-                            .Replace(',', '.');
+                .Replace(',', '.');
 
             if (double.TryParse(
                     text,

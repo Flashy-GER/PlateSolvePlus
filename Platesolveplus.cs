@@ -113,7 +113,26 @@ namespace NINA.Plugins.PlateSolvePlus {
                 RaisePropertyChanged(nameof(IsArcsecMode));
             }
 
-        }
+        
+
+            // Offset display properties depend on multiple Settings fields
+            if (name == nameof(PlateSolvePlusSettings.OffsetRaArcsec)
+                || name == nameof(PlateSolvePlusSettings.OffsetDecArcsec)
+                || name == nameof(PlateSolvePlusSettings.RotationQw)
+                || name == nameof(PlateSolvePlusSettings.RotationQx)
+                || name == nameof(PlateSolvePlusSettings.RotationQy)
+                || name == nameof(PlateSolvePlusSettings.RotationQz)
+                || name == nameof(PlateSolvePlusSettings.OffsetLastCalibratedUtc)) {
+
+                RaisePropertyChanged(nameof(HasOffsetSet));
+                RaisePropertyChanged(nameof(OffsetStatusText));
+                RaisePropertyChanged(nameof(OffsetQuaternionText));
+                RaisePropertyChanged(nameof(OffsetRotationDegText));
+                RaisePropertyChanged(nameof(OffsetRaArcsecText));
+                RaisePropertyChanged(nameof(OffsetDecArcsecText));
+                RaisePropertyChanged(nameof(OffsetLastCalibratedText));
+            }
+}
 
         private void ResetOffset() {
             Settings.ResetOffset();
@@ -203,6 +222,37 @@ namespace NINA.Plugins.PlateSolvePlus {
         }
 
 
+
+
+        // =========================
+        // Offset display helpers (Options UI)
+        // =========================
+        public bool HasOffsetSet => Settings.HasOffsetSet;
+
+        public string OffsetStatusText => HasOffsetSet ? "Offset: kalibriert ✅" : "Offset: nicht gesetzt ⚠️";
+
+        public string OffsetQuaternionText =>
+            $"q = (w={Settings.RotationQw:0.000000}, x={Settings.RotationQx:0.000000}, y={Settings.RotationQy:0.000000}, z={Settings.RotationQz:0.000000})";
+
+        public string OffsetRotationDegText {
+            get {
+                // angle = 2 * acos(w) (assuming quaternion is near-normalized)
+                var w = Settings.RotationQw;
+                if (w > 1.0) w = 1.0;
+                if (w < -1.0) w = -1.0;
+                var angleRad = 2.0 * Math.Acos(w);
+                var angleDeg = angleRad * 180.0 / Math.PI;
+                return $"{angleDeg:0.000} °";
+            }
+        }
+
+        public string OffsetRaArcsecText => $"{Settings.OffsetRaArcsec:0.0} ″";
+        public string OffsetDecArcsecText => $"{Settings.OffsetDecArcsec:0.0} ″";
+
+        public string OffsetLastCalibratedText =>
+            Settings.OffsetLastCalibratedUtc.HasValue
+                ? Settings.OffsetLastCalibratedUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+                : "-";
         private void PersistSingle(string propertyName) {
             switch (propertyName) {
 

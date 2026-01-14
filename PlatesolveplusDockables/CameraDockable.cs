@@ -969,21 +969,57 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             var solve = await CaptureAndSolveGuiderAsync(updateUi: true).ConfigureAwait(false);
             if (!solve.success) return;
 
-            // remember guider solve
+            // remember guider solve (always)
             lastGuiderSolveDeg = (solve.raDeg, solve.decDeg);
             LastGuiderSolveText = FormatSolvedLine("Guider", solve.raDeg, solve.decDeg);
 
-            // If offset deleted / not present -> set NEW offset
-            if (!HasOffsetSet) {
-                await AutoSetOffsetIfMissingAsync(solve.raDeg, solve.decDeg).ConfigureAwait(false);
-            }
-
-            // corrected preview
+            // corrected preview (only if offset enabled + set)
             lastCorrectedSolveDeg = ComputeCorrectedIfEnabled(solve.raDeg, solve.decDeg);
             CorrectedSolveText = lastCorrectedSolveDeg.HasValue
                 ? FormatSolvedLine("Corrected", lastCorrectedSolveDeg.Value.raDeg, lastCorrectedSolveDeg.Value.decDeg)
                 : "Corrected: (Offset disabled or not set) → using guider solve as-is.";
+
+            // CaptureOnly MUST NOT change any state (no auto offset, no sync, no slew)
+            // If mount coords are available, compare and suggest recalibration when offset is active.
+            if (MountState == MountConnectionState.ConnectedWithCoords &&
+                TelescopeReferenceService != null &&
+                TelescopeReferenceService.TryGetCurrentRaDec(out var mainRaDeg, out var mainDecDeg) &&
+                IsValidRaDec(mainRaDeg, mainDecDeg)) {
+
+                var compare = lastCorrectedSolveDeg ?? (solve.raDeg, solve.decDeg);
+
+                var deltaRaDeg = NormalizeDeltaDeg(compare.raDeg - mainRaDeg);
+                var deltaDecDeg = compare.decDeg - mainDecDeg;
+
+                var decMidRad = ((mainDecDeg + compare.decDeg) * 0.5) * Math.PI / 180.0;
+                var deltaRaArcsec = deltaRaDeg * 3600.0 * Math.Cos(decMidRad);
+                var deltaDecArcsec = deltaDecDeg * 3600.0;
+
+                var sepArcmin = SeparationArcmin(mainRaDeg, mainDecDeg, compare.raDeg, compare.decDeg);
+                var sepArcsec = sepArcmin * 60.0;
+
+                var thrArcmin = PluginSettings?.Settings?.CenteringThresholdArcmin ?? 1.0;
+                var suggestRecal = OffsetEnabled && HasOffsetSet && sepArcmin > thrArcmin;
+
+                StatusText = suggestRecal ? "CaptureOnly: Offset mismatch ⚠️" : "CaptureOnly done ✅";
+
+                DetailsText =
+                    $"Mount: RA {AstroFormat.FormatRaHms(mainRaDeg)} / Dec {AstroFormat.FormatDecDms(mainDecDeg)} (deg: {mainRaDeg:0.######}, {mainDecDeg:0.######})" +
+                    $"{(lastCorrectedSolveDeg.HasValue ? "Compared(Corrected)" : "Compared(Solved)")}: RA {AstroFormat.FormatRaHms(compare.raDeg)} / Dec {AstroFormat.FormatDecDms(compare.decDeg)} (deg: {compare.raDeg:0.######}, {compare.decDeg:0.######})" +
+                    $"Δ: dRA={deltaRaArcsec:+0.0;-0.0;0.0}\"  dDec={deltaDecArcsec:+0.0;-0.0;0.0}\"  Sep={sepArcsec:0.0}\"" +
+                    (OffsetEnabled && !HasOffsetSet ? "Offset is enabled but not calibrated → run Calibrate Offset." : string.Empty) +
+                    (suggestRecal ? $"Offset likely outdated (Sep>{thrArcmin:0.###} arcmin). Consider recalibrating the offset." : "Offset seems consistent with current mount position.");
+            } else {
+                StatusText = "CaptureOnly done ✅";
+                DetailsText =
+                    "Platesolve completed." +
+                    (MountState == MountConnectionState.ConnectedWithCoords
+                        ? "Mount RA/Dec not available via TelescopeReferenceService."
+                        : "Mount not connected / coordinates not available → no comparison possible.") +
+                    (OffsetEnabled && !HasOffsetSet ? "Offset is enabled but not calibrated → run Calibrate Offset." : "");
+            }
         }
+
 
         private async Task CaptureAndSyncOrSlewAsync() {
             UpdateMountConnectionState();
@@ -1787,6 +1823,13 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             }
 
             var useOffset = OffsetEnabled && HasOffsetSet && PluginSettings?.Settings != null;
+
+            // Centering with secondary camera is only valid when an offset is active AND calibrated
+            if (!useOffset) {
+                StatusText = "Center not available ❌";
+                DetailsText = "Centering requires an active and calibrated offset (OffsetEnabled + HasOffsetSet).";
+                return;
+            }
 
             StatusText = "Centering: initial capture/solve…";
             DetailsText = $"Threshold={thresholdArcmin:0.###} arcmin, MaxAttempts={maxAttempts}";
