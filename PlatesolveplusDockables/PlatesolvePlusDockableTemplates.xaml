@@ -11,17 +11,6 @@
     -->
 
     <!-- =========================
-         Main Dockable
-         ========================= -->
-    <DataTemplate x:Key="NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables.PlateSolvePlusDockable_Dockable">
-        <local:PlateSolvePlusDockableView />
-    </DataTemplate>
-
-    <DataTemplate x:Key="NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables.PlateSolvePlusDockableVM_Dockable">
-        <local:PlateSolvePlusDockableView />
-    </DataTemplate>
-
-    <!-- =========================
          NEW: Camera Dockable
          ========================= -->
     <DataTemplate x:Key="NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables.CameraDockable_Dockable">
