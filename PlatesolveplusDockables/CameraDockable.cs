@@ -289,6 +289,31 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             set { if (correctedSolveText == value) return; correctedSolveText = value; RaisePropertyChanged(nameof(CorrectedSolveText)); }
         }
 
+
+        // ===== Slew-to-target inputs (main coordinates in degrees) =====
+        private double targetRaDeg = double.NaN;
+        public double TargetRaDeg {
+            get => targetRaDeg;
+            set {
+                if (double.IsNaN(targetRaDeg) && double.IsNaN(value)) return;
+                if (!double.IsNaN(targetRaDeg) && Math.Abs(targetRaDeg - value) < 1e-9) return;
+                targetRaDeg = value;
+                RaisePropertyChanged(nameof(TargetRaDeg));
+            }
+        }
+
+        private double targetDecDeg = double.NaN;
+        public double TargetDecDeg {
+            get => targetDecDeg;
+            set {
+                if (double.IsNaN(targetDecDeg) && double.IsNaN(value)) return;
+                if (!double.IsNaN(targetDecDeg) && Math.Abs(targetDecDeg - value) < 1e-9) return;
+                targetDecDeg = value;
+                RaisePropertyChanged(nameof(TargetDecDeg));
+            }
+        }
+
+        private bool HasValidTarget => IsValidRaDec(TargetRaDeg, TargetDecDeg);
         // internal cached solves
         private (double raDeg, double decDeg)? lastGuiderSolveDeg;
         private (double raDeg, double decDeg)? lastCorrectedSolveDeg;
@@ -307,6 +332,8 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
         public ICommand CalibrateOffsetCommand { get; }
 
+      // NEW: Slew to a given main target (deg) and then center using secondary + offset mapping
+        public ICommand SlewToTargetAndCenterCommand { get; }
         // ===== View bindings compatibility =====
         public bool UseSlewInsteadOfSync {
             get => useSlewInsteadOfSync;
@@ -480,6 +507,9 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             // Existing: capture + sync/slew
             CaptureAndSolveCommand = new SimpleAsyncCommand(CaptureAndSyncOrSlewAsync);
 
+            // NEW: slew to target + center (requires offset)
+            SlewToTargetAndCenterCommand = new SimpleAsyncCommand(SlewToTargetAndCenterAsync);
+            CalibrateOffsetCommand = new SimpleAsyncCommand(CalibrateOffsetAsync);
             CalibrateOffsetCommand = new SimpleAsyncCommand(CalibrateOffsetAsync);
 
             StatusText = "Waiting for MEF imports…";
@@ -786,7 +816,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 ? FormatSolvedLine("Corrected", lastCorrectedSolveDeg.Value.raDeg, lastCorrectedSolveDeg.Value.decDeg)
                 : "Corrected: (Offset disabled or not set) → using guider solve as-is.";
         }
-
         private void PluginSettings_PropertyChanged(object? sender, PropertyChangedEventArgs e) {
             ApplySettings(ReadSettingsFromPluginInstance(), force: false);
             UpdateSolvedTextsAfterOffsetChange();
@@ -850,7 +879,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
             return s;
         }
-
         private void ApplySettings(PlateSolvePlusSettings s, bool force) {
             if (force) {
                 GuideExposureSeconds = s.GuideExposureSeconds;
@@ -959,6 +987,13 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             }
 
             if (UseSlewInsteadOfSync) {
+                // Capture + Slew (Center) is only valid when an offset is enabled AND calibrated.
+                if (!(OffsetEnabled && HasOffsetSet)) {
+                    StatusText = "Center not available ❌";
+                    DetailsText = "Capture + Slew (Center) requires an active and calibrated offset.";
+                    return;
+                }
+
                 var thr = PluginSettings?.Settings?.CenteringThresholdArcmin ?? 1.0;
                 var max = PluginSettings?.Settings?.CenteringMaxAttempts ?? 5;
 
@@ -1839,6 +1874,169 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
             var svc = new OffsetService();
             return svc.ApplyToGuiderSolve(PluginSettings.Settings, guiderRaDeg, guiderDecDeg);
+        }
+
+
+        // =====================================
+        // Slew-to-Target + Center (Secondary)
+        // =====================================
+
+        /// <summary>
+        /// Slew the mount to a user-provided MAIN target (TargetRaDeg/TargetDecDeg, in degrees)
+        /// and then center on that target using secondary-camera plate solving + offset mapping.
+        /// Requires a calibrated offset (OffsetEnabled && HasOffsetSet).
+        /// </summary>
+        private async Task SlewToTargetAndCenterAsync() {
+            UpdateMountConnectionState();
+
+            if (MountState != MountConnectionState.ConnectedWithCoords) {
+                StatusText = "Mount not ready ❌";
+                DetailsText = "Mount not connected OR coordinates not available.";
+                return;
+            }
+
+            if (!IsSecondaryConnected) {
+                StatusText = "Secondary camera not connected ❌";
+                DetailsText = "Click Connect first.";
+                return;
+            }
+
+            if (!(OffsetEnabled && HasOffsetSet)) {
+                StatusText = "Target centering not available ❌";
+                DetailsText = "Slew to Target + Center requires an active and calibrated offset.";
+                return;
+            }
+
+            if (!HasValidTarget) {
+                StatusText = "Invalid target ❌";
+                DetailsText = "Please set TargetRaDeg (0..360) and TargetDecDeg (-90..+90) in degrees.";
+                return;
+            }
+
+            if (TelescopeMediator == null) {
+                StatusText = "Cannot slew ❌";
+                DetailsText = "TelescopeMediator not available (MEF import failed).";
+                return;
+            }
+
+            if (!TryToCoordinates(TargetRaDeg, TargetDecDeg, out var targetCoords)) return;
+
+            try {
+                StatusText = "Slewing to target…";
+                DetailsText = $"Target(main): RA={TargetRaDeg:0.######}°, Dec={TargetDecDeg:0.######}°";
+
+                await TelescopeMediator.SlewToCoordinatesAsync(targetCoords, CancellationToken.None).ConfigureAwait(false);
+            } catch (Exception ex) {
+                StatusText = "Slew failed ❌";
+                DetailsText = ex.ToString();
+                return;
+            }
+
+            var thr = PluginSettings?.Settings?.CenteringThresholdArcmin ?? 1.0;
+            var max = PluginSettings?.Settings?.CenteringMaxAttempts ?? 5;
+
+            await CenterOnTargetWithSecondaryAsync(TargetRaDeg, TargetDecDeg, thr, max, CancellationToken.None).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Center on a fixed MAIN target using secondary-camera solves mapped to MAIN via the calibrated offset.
+        /// </summary>
+        private async Task CenterOnTargetWithSecondaryAsync(double desiredMainRaDeg, double desiredMainDecDeg, double thresholdArcmin, int maxAttempts, CancellationToken ct) {
+            UpdateMountConnectionState();
+
+            if (MountState != MountConnectionState.ConnectedWithCoords) {
+                StatusText = "Mount not ready ❌";
+                DetailsText = "Mount not connected OR coordinates not available.";
+                return;
+            }
+
+            if (!IsSecondaryConnected) {
+                StatusText = "Secondary camera not connected ❌";
+                DetailsText = "Click Connect first.";
+                return;
+            }
+
+            var useOffset = OffsetEnabled && HasOffsetSet && PluginSettings?.Settings != null;
+            if (!useOffset) {
+                StatusText = "Center not available ❌";
+                DetailsText = "Offset is not enabled/calibrated.";
+                return;
+            }
+
+            var desiredMain = (raDeg: NormalizeRaDeg(desiredMainRaDeg), decDeg: Math.Max(-90.0, Math.Min(90.0, desiredMainDecDeg)));
+
+            CorrectedSolveText = FormatSolvedLine("Desired(main)", desiredMain.raDeg, desiredMain.decDeg);
+
+            for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+                ct.ThrowIfCancellationRequested();
+
+                StatusText = $"Centering(target): attempt {attempt}/{maxAttempts} – solving…";
+                DetailsText = $"Desired(main): RA={desiredMain.raDeg:0.######}°, Dec={desiredMain.decDeg:0.######}°";
+
+                var cur = await CaptureAndSolveGuiderAsync(updateUi: true).ConfigureAwait(false);
+                if (!cur.success) return;
+
+                lastGuiderSolveDeg = (cur.raDeg, cur.decDeg);
+                LastGuiderSolveText = FormatSolvedLine("Guider", cur.raDeg, cur.decDeg);
+
+                var solvedMain = MapGuiderToMain(cur.raDeg, cur.decDeg);
+
+                var errArcmin = SeparationArcmin(
+                    solvedMain.raDeg, solvedMain.decDeg,
+                    desiredMain.raDeg, desiredMain.decDeg);
+
+                CorrectedSolveText =
+                    $"{FormatSolvedLine("Solved(main)", solvedMain.raDeg, solvedMain.decDeg)}" +
+                    $"Error: {errArcmin:0.###} arcmin (threshold {thresholdArcmin:0.###})";
+
+                if (errArcmin <= thresholdArcmin) {
+                    StatusText = "Centering done ✅";
+                    DetailsText = $"Reached threshold: {errArcmin:0.###} arcmin ≤ {thresholdArcmin:0.###}";
+                    return;
+                }
+
+                bool syncOk = false;
+                try {
+                    if (!TryToCoordinates(solvedMain.raDeg, solvedMain.decDeg, out var solvedCoords)) return;
+
+                    StatusText = $"Centering(target): attempt {attempt}/{maxAttempts} – syncing…";
+                    DetailsText = $"SyncTo(main): RA={solvedMain.raDeg:0.######}°, Dec={solvedMain.decDeg:0.######}°";
+
+                    syncOk = await TelescopeMediator!.Sync(solvedCoords).ConfigureAwait(false);
+                } catch {
+                    syncOk = false;
+                }
+
+                double slewRa;
+                double slewDec;
+
+                if (syncOk) {
+                    slewRa = desiredMain.raDeg;
+                    slewDec = desiredMain.decDeg;
+
+                    StatusText = $"Centering(target): attempt {attempt}/{maxAttempts} – slewing…";
+                    DetailsText = $"Sync OK. SlewTo(main target): RA={slewRa:0.######}°, Dec={slewDec:0.######}°";
+                } else {
+                    var deltaRa = NormalizeDeltaDeg(desiredMain.raDeg - solvedMain.raDeg);
+                    var deltaDec = desiredMain.decDeg - solvedMain.decDeg;
+
+                    slewRa = NormalizeRaDeg(desiredMain.raDeg + deltaRa);
+                    slewDec = Math.Max(-90.0, Math.Min(90.0, desiredMain.decDeg + deltaDec));
+
+                    StatusText = $"Centering(target): attempt {attempt}/{maxAttempts} – slewing…";
+                    DetailsText =
+                        $"Sync failed → using offset correction." +
+                        $"OffsetΔ: dRA={deltaRa:0.######}°, dDec={deltaDec:0.######}°" +
+                        $"SlewTo(main): RA={slewRa:0.######}°, Dec={slewDec:0.######}°";
+                }
+
+                if (!TryToCoordinates(slewRa, slewDec, out var slewCoords2)) return;
+
+                await TelescopeMediator!.SlewToCoordinatesAsync(slewCoords2, ct).ConfigureAwait(false);
+            }
+
+            StatusText = "Centering not reached ⚠️";
+            DetailsText = $"Max attempts ({maxAttempts}) reached. Consider increasing threshold or improving offset calibration.";
         }
 
         // API Wrapper Triggers
