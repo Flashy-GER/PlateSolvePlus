@@ -64,7 +64,7 @@ namespace NINA.Plugins.PlateSolvePlus {
         // =========================
         // Offset display helpers (for Options.xaml / API)
         // =========================
-        private readonly OffsetService offsetService;
+        private readonly OffsetService offsetService = new();
 
         public bool HasOffsetSet => Settings.HasOffsetSet;
 

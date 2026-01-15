@@ -1,4 +1,6 @@
 ﻿using NINA.Core.Utility;
+using NINA.Plugins.PlateSolvePlus.Properties;
+using NINA.Plugins.PlateSolvePlus.Services;
 using System;
 
 namespace NINA.Plugins.PlateSolvePlus {
@@ -150,6 +152,13 @@ namespace NINA.Plugins.PlateSolvePlus {
         // =========================
         // Offset
         // =========================
+        private readonly OffsetService offsetService = new();
+
+        public string OffsetQuaternionText => offsetService.GetQuaternionText(this);
+        public string OffsetRotationDegText => offsetService.GetRotationAngleText(this);
+        // public string OffsetRaArcsecText => offsetService.GetOffsetRaArcsecText(this);
+        // public string OffsetDecArcsecText => offsetService.GetOffsetDecArcsecText(this);
+
         private bool offsetEnabled = true;
         public bool OffsetEnabled {
             get => offsetEnabled;
@@ -181,42 +190,56 @@ namespace NINA.Plugins.PlateSolvePlus {
         public double OffsetRaArcsec {
             get => offsetRaArcsec;
             set { if (Math.Abs(offsetRaArcsec - value) < 0.000001) return; offsetRaArcsec = value; RaisePropertyChanged();
-                RaisePropertyChanged(nameof(HasOffsetSet)); }
+                RaisePropertyChanged(nameof(HasOffsetSet));
+            }
         }
 
         private double offsetDecArcsec = 0.0;
         public double OffsetDecArcsec {
             get => offsetDecArcsec;
             set { if (Math.Abs(offsetDecArcsec - value) < 0.000001) return; offsetDecArcsec = value; RaisePropertyChanged();
-                RaisePropertyChanged(nameof(HasOffsetSet)); }
+                RaisePropertyChanged(nameof(HasOffsetSet));
+            }
         }
 
         private double rotationQw = 1.0;
         public double RotationQw {
             get => rotationQw;
             set { if (Math.Abs(rotationQw - value) < 0.000001) return; rotationQw = value; RaisePropertyChanged();
-                RaisePropertyChanged(nameof(HasOffsetSet)); }
+                RaisePropertyChanged(nameof(HasOffsetSet));
+                OnPropertyChanged(nameof(OffsetQuaternionText));
+                OnPropertyChanged(nameof(OffsetRotationDegText));
+            }
         }
 
         private double rotationQx = 0.0;
         public double RotationQx {
             get => rotationQx;
             set { if (Math.Abs(rotationQx - value) < 0.000001) return; rotationQx = value; RaisePropertyChanged();
-                RaisePropertyChanged(nameof(HasOffsetSet)); }
+                RaisePropertyChanged(nameof(HasOffsetSet));
+                OnPropertyChanged(nameof(OffsetQuaternionText));
+                OnPropertyChanged(nameof(OffsetRotationDegText));
+            }
         }
 
         private double rotationQy = 0.0;
         public double RotationQy {
             get => rotationQy;
             set { if (Math.Abs(rotationQy - value) < 0.000001) return; rotationQy = value; RaisePropertyChanged();
-                RaisePropertyChanged(nameof(HasOffsetSet)); }
+                RaisePropertyChanged(nameof(HasOffsetSet));
+                OnPropertyChanged(nameof(OffsetQuaternionText));
+                OnPropertyChanged(nameof(OffsetRotationDegText));
+            }
         }
 
         private double rotationQz = 0.0;
         public double RotationQz {
             get => rotationQz;
             set { if (Math.Abs(rotationQz - value) < 0.000001) return; rotationQz = value; RaisePropertyChanged();
-                RaisePropertyChanged(nameof(HasOffsetSet)); }
+                RaisePropertyChanged(nameof(HasOffsetSet));
+                OnPropertyChanged(nameof(OffsetQuaternionText));
+                OnPropertyChanged(nameof(OffsetRotationDegText));
+            }
         }
 
         private DateTime? offsetLastCalibratedUtc;

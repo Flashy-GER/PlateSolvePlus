@@ -10,7 +10,7 @@ using System.ComponentModel.Composition;
 using System.Windows;
 using System.Windows.Input;
 
-namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
+/* namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
     [Export(typeof(NINA.Equipment.Interfaces.ViewModel.IDockableVM))]
     public sealed class PlateSolvePlusDockable : DockableVM,
@@ -490,4 +490,4 @@ try { TelescopeReferenceService.ReferenceUpdated -= TelescopeReferenceService_Re
             RotationAngleDegText = OffsetService.GetRotationAngleText(Settings);
         }
     }
-}
+} */
