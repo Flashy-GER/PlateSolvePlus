@@ -81,12 +81,15 @@ namespace NINA.Plugins.PlateSolvePlus {
                 ? Settings.OffsetLastCalibratedUtc.Value.ToString("yyyy-MM-dd HH:mm:ss")
                 : "-";
 
-// For Options.xaml "Delete Rotation Offset"
+        // For Options.xaml "Delete Rotation Offset"
         public ICommand ResetRotationOffsetCommand { get; }
         public ICommand ResetOffsetCommand { get; }
 
 
         private bool isLoadingSettings;
+        // Prevent endless ping-pong when we apply values coming from a different MEF container
+        // (e.g. Dockable calibrated offset -> Options UI instance).
+        private bool suppressBusPublish;
 
         [ImportingConstructor]
         public Platesolveplus(IProfileService profileService) {
@@ -104,11 +107,120 @@ namespace NINA.Plugins.PlateSolvePlus {
 
             Settings.PropertyChanged += Settings_PropertyChanged;
             profileService.ProfileChanged += ProfileService_ProfileChanged;
+
+            // Receive updates originating from other MEF containers (e.g. Dockables) so the
+            // Options UI shows fresh values immediately without a N.I.N.A. restart.
+            PlateSolvePlusSettingsBus.SettingChanged += SettingsBus_SettingChanged;
         }
 
         private void ProfileService_ProfileChanged(object sender, EventArgs e) {
             LoadAllIntoSettings(Settings);
             RaisePropertyChanged(string.Empty);
+        }
+
+        private void SettingsBus_SettingChanged(object? sender, PlateSolvePlusSettingChangedEventArgs e) {
+            if (e == null) return;
+
+            // If the value already matches, do nothing (prevents churn + loops)
+            var current = GetCurrentValue(e.Key);
+            if (Equals(current, e.Value)) return;
+
+            try {
+                suppressBusPublish = true;
+                ApplyFromBus(e.Key, e.Value);
+            } finally {
+                suppressBusPublish = false;
+            }
+        }
+
+        private void ApplyFromBus(string key, object? value) {
+            // Apply the incoming value to our Settings instance.
+            // This will fire Settings_PropertyChanged -> PersistSingle -> UI refresh.
+            switch (key) {
+                case nameof(PlateSolvePlusSettings.GuideExposureSeconds):
+                    if (value is double d1) Settings.GuideExposureSeconds = d1;
+                    break;
+                case nameof(PlateSolvePlusSettings.GuideGain):
+                    if (value is int i1) Settings.GuideGain = i1;
+                    break;
+                case nameof(PlateSolvePlusSettings.GuideBinning):
+                    if (value is int i2) Settings.GuideBinning = i2;
+                    break;
+
+                case nameof(PlateSolvePlusSettings.GuideFocalLengthMm):
+                    if (value is double d2) Settings.GuideFocalLengthMm = d2;
+                    break;
+                case nameof(PlateSolvePlusSettings.UseCameraPixelSize):
+                    if (value is bool b1) Settings.UseCameraPixelSize = b1;
+                    break;
+                case nameof(PlateSolvePlusSettings.GuidePixelSizeUm):
+                    if (value is double d3) Settings.GuidePixelSizeUm = d3;
+                    break;
+
+                case nameof(PlateSolvePlusSettings.SolverSearchRadiusDeg):
+                    if (value is double d4) Settings.SolverSearchRadiusDeg = d4;
+                    break;
+                case nameof(PlateSolvePlusSettings.SolverDownsample):
+                    if (value is int i3) Settings.SolverDownsample = i3;
+                    break;
+                case nameof(PlateSolvePlusSettings.SolverTimeoutSec):
+                    if (value is int i4) Settings.SolverTimeoutSec = i4;
+                    break;
+
+                case nameof(PlateSolvePlusSettings.CenteringThresholdArcmin):
+                    if (value is double d5) Settings.CenteringThresholdArcmin = d5;
+                    break;
+                case nameof(PlateSolvePlusSettings.CenteringMaxAttempts):
+                    if (value is int i5) Settings.CenteringMaxAttempts = i5;
+                    break;
+
+                case nameof(PlateSolvePlusSettings.OffsetEnabled):
+                    if (value is bool bo) Settings.OffsetEnabled = bo;
+                    break;
+                case nameof(PlateSolvePlusSettings.OffsetMode):
+                    if (value is OffsetMode om) Settings.OffsetMode = om;
+                    else if (value is int omInt) Settings.OffsetModeInt = omInt;
+                    break;
+                case nameof(PlateSolvePlusSettings.OffsetModeInt):
+                    if (value is int omi) Settings.OffsetModeInt = omi;
+                    break;
+                case nameof(PlateSolvePlusSettings.OffsetRaArcsec):
+                    if (value is double dra) Settings.OffsetRaArcsec = dra;
+                    break;
+                case nameof(PlateSolvePlusSettings.OffsetDecArcsec):
+                    if (value is double ddec) Settings.OffsetDecArcsec = ddec;
+                    break;
+                case nameof(PlateSolvePlusSettings.OffsetLastCalibratedUtc):
+                    if (value is DateTime dt) Settings.OffsetLastCalibratedUtc = dt;
+                    else Settings.OffsetLastCalibratedUtc = null;
+                    break;
+
+                case nameof(PlateSolvePlusSettings.RotationQw):
+                    if (value is double qw) Settings.RotationQw = qw;
+                    break;
+                case nameof(PlateSolvePlusSettings.RotationQx):
+                    if (value is double qx) Settings.RotationQx = qx;
+                    break;
+                case nameof(PlateSolvePlusSettings.RotationQy):
+                    if (value is double qy) Settings.RotationQy = qy;
+                    break;
+                case nameof(PlateSolvePlusSettings.RotationQz):
+                    if (value is double qz) Settings.RotationQz = qz;
+                    break;
+
+                case nameof(PlateSolvePlusSettings.ApiEnabled):
+                    if (value is bool ab) Settings.ApiEnabled = ab;
+                    break;
+                case nameof(PlateSolvePlusSettings.ApiPort):
+                    if (value is int ap) Settings.ApiPort = ap;
+                    break;
+                case nameof(PlateSolvePlusSettings.ApiRequireToken):
+                    if (value is bool art) Settings.ApiRequireToken = art;
+                    break;
+                case nameof(PlateSolvePlusSettings.ApiToken):
+                    Settings.ApiToken = value as string;
+                    break;
+            }
         }
 
         private void ResetRotationOffset() {
@@ -127,11 +239,13 @@ namespace NINA.Plugins.PlateSolvePlus {
             if (string.IsNullOrWhiteSpace(name)) return;
 
             PersistSingle(name);
-            PlateSolvePlusSettingsBus.Publish(name, GetCurrentValue(name));
+            if (!suppressBusPublish) {
+                PlateSolvePlusSettingsBus.Publish(name, GetCurrentValue(name));
+            }
 
             RaisePropertyChanged(name);
 
-            
+
             // Keep derived offset display properties in sync
             if (name == nameof(PlateSolvePlusSettings.OffsetRaArcsec) ||
                 name == nameof(PlateSolvePlusSettings.OffsetDecArcsec) ||
@@ -151,7 +265,7 @@ namespace NINA.Plugins.PlateSolvePlus {
                 RaisePropertyChanged(nameof(OffsetDecArcsecText));
                 RaisePropertyChanged(nameof(OffsetLastCalibratedText));
             }
-if (name == nameof(PlateSolvePlusSettings.OffsetMode) || name == nameof(PlateSolvePlusSettings.OffsetModeInt)) {
+            if (name == nameof(PlateSolvePlusSettings.OffsetMode) || name == nameof(PlateSolvePlusSettings.OffsetModeInt)) {
                 RaisePropertyChanged(nameof(IsRotationMode));
                 RaisePropertyChanged(nameof(IsArcsecMode));
             }
@@ -278,7 +392,7 @@ if (name == nameof(PlateSolvePlusSettings.OffsetMode) || name == nameof(PlateSol
                     options.SetValueDouble(propertyName, Settings.CenteringThresholdArcmin); break;
                 case nameof(PlateSolvePlusSettings.CenteringMaxAttempts):
                     options.SetValueInt32(propertyName, Settings.CenteringMaxAttempts); break;
-                
+
                 // Web API
                 case nameof(PlateSolvePlusSettings.ApiEnabled):
                     options.SetValueBoolean(propertyName, Settings.ApiEnabled);
