@@ -222,6 +222,202 @@ namespace NINA.Plugins.PlateSolvePlus.Services.Api {
             await JsonAsync(status);
         }
 
+        // ============================================================
+        // Settings (Camera / Scope / Platesolve)
+        // ============================================================
+
+        public sealed class PutSettingsRequest {
+            public CameraSettings? camera { get; set; }
+            public PlatesolveSettings? platesolve { get; set; }
+        }
+
+        public sealed class CameraSettings {
+            public double? exposureSeconds { get; set; }
+            public int? binning { get; set; }
+            public int? gain { get; set; }
+            public double? focalLengthMm { get; set; }
+            public bool? useCameraPixelSize { get; set; }
+            public double? pixelSizeUm { get; set; }
+
+            public bool? previewDebayerEnabled { get; set; }
+            public bool? previewAutoStretchEnabled { get; set; }
+            public bool? previewUnlinkedStretchEnabled { get; set; }
+        }
+
+        public sealed class PlatesolveSettings {
+            public double? centeringThresholdArcmin { get; set; }
+            public int? centeringMaxAttempts { get; set; }
+            public bool? useSlewInsteadOfSync { get; set; }
+        }
+        [Route(HttpVerbs.Get, "/platesolveplus/settings")]
+        public async Task GetSettings() {
+            var settings = await RunOnUiAsync(() => {
+                var s = _dockable.PluginSettings?.Settings;
+
+                // camera
+                var camera = new {
+                    driver = _dockable.SelectedSecondaryCameraProgId ?? _dockable.SecondaryCameraService?.ProgId,
+                    connected = _dockable.IsSecondaryConnected,
+                    exposureSeconds = _dockable.GuideExposureSeconds,
+                    binning = _dockable.GuideBinning,
+                    // gain: -1 means auto in our UI
+                    gain = _dockable.GuideGain,
+                    focalLengthMm = _dockable.GuideFocalLengthMm,
+                    useCameraPixelSize = _dockable.UseCameraPixelSize,
+                    pixelSizeUm = _dockable.GuidePixelSizeUm,
+                    // derived: image scale in arcsec/px
+                    scopeScaleArcsecPerPixel = ComputeArcsecPerPixel(_dockable.GuideFocalLengthMm, _dockable.GuidePixelSizeUm),
+                    // preview/render
+                    previewDebayerEnabled = _dockable.PreviewDebayerEnabled,
+                    previewAutoStretchEnabled = _dockable.PreviewAutoStretchEnabled,
+                    previewUnlinkedStretchEnabled = _dockable.PreviewUnlinkedStretchEnabled,
+                };
+
+                // scope / offset
+                const double eps = 1e-6;
+                var ra = _dockable.OffsetRaArcsec;
+                var dec = _dockable.OffsetDecArcsec;
+                var hasDelta = Math.Abs(ra) > eps || Math.Abs(dec) > eps;
+
+                var qw = _dockable.RotationQw;
+                var qx = _dockable.RotationQx;
+                var qy = _dockable.RotationQy;
+                var qz = _dockable.RotationQz;
+                var hasRot = Math.Abs(qw - 1.0) > eps || Math.Abs(qx) > eps || Math.Abs(qy) > eps || Math.Abs(qz) > eps;
+                var offsetSet = hasDelta || hasRot;
+
+                var scope = new {
+                    mountConnected = _dockable.IsMountConnected,
+                    mountState = _dockable.MountState.ToString(),
+                    offsetEnabled = _dockable.OffsetEnabled,
+                    offsetMode = _dockable.OffsetMode.ToString(),
+                    offsetSet,
+                    offsetRaArcsec = ra,
+                    offsetDecArcsec = dec,
+                    rotation = new { qw, qx, qy, qz },
+                    offsetLastCalibratedUtc = _dockable.OffsetLastCalibratedUtc
+                };
+
+                // platesolve / centering
+                var platesolve = new {
+                    centeringThresholdArcmin = s?.CenteringThresholdArcmin ?? 1.0,
+                    centeringMaxAttempts = s?.CenteringMaxAttempts ?? 5,
+                    // true means "Center+Solve" uses Slew/Center workflow; false means Sync
+                    useSlewInsteadOfSync = _dockable.UseSlewInsteadOfSync,
+                };
+
+                return new {
+                    camera,
+                    scope,
+                    platesolve
+                };
+            });
+
+            await JsonAsync(settings);
+        }
+
+        [Route(HttpVerbs.Put, "/platesolveplus/settings")]
+        public async Task PutSettings() {
+            var req = await HttpContext.GetRequestDataAsync<PutSettingsRequest>();
+
+            // Apply on UI thread because we touch WPF-bound properties/settings.
+            var ok = await RunOnUiAsync(() => {
+                var s = _dockable.PluginSettings?.Settings;
+                if (s == null) return false;
+
+                // ---- Camera ----
+                if (req?.camera != null) {
+                    var c = req.camera;
+
+                    if (c.exposureSeconds.HasValue) s.GuideExposureSeconds = Clamp(c.exposureSeconds.Value, 0.05, 60.0);
+                    if (c.binning.HasValue) s.GuideBinning = Math.Clamp(c.binning.Value, 1, 4);
+                    if (c.gain.HasValue) s.GuideGain = Math.Clamp(c.gain.Value, -1, 600);
+                    if (c.focalLengthMm.HasValue) s.GuideFocalLengthMm = Clamp(c.focalLengthMm.Value, 1.0, 10000.0);
+                    if (c.useCameraPixelSize.HasValue) s.UseCameraPixelSize = c.useCameraPixelSize.Value;
+                    if (c.pixelSizeUm.HasValue) s.GuidePixelSizeUm = Clamp(c.pixelSizeUm.Value, 0.1, 50.0);
+
+                    if (c.previewDebayerEnabled.HasValue) s.PreviewDebayerEnabled = c.previewDebayerEnabled.Value;
+                    if (c.previewAutoStretchEnabled.HasValue) s.PreviewAutoStretchEnabled = c.previewAutoStretchEnabled.Value;
+                    if (c.previewUnlinkedStretchEnabled.HasValue) s.PreviewUnlinkedStretchEnabled = c.previewUnlinkedStretchEnabled.Value;
+                }
+
+                // ---- Platesolve ----
+                if (req?.platesolve != null) {
+                    var p = req.platesolve;
+
+                    if (p.centeringThresholdArcmin.HasValue) s.CenteringThresholdArcmin = Clamp(p.centeringThresholdArcmin.Value, 0.05, 120.0);
+                    if (p.centeringMaxAttempts.HasValue) s.CenteringMaxAttempts = Math.Clamp(p.centeringMaxAttempts.Value, 1, 25);
+
+                    if (p.useSlewInsteadOfSync.HasValue) {
+                        // this is runtime behavior in the dockable (not persisted in settings)
+                        _dockable.UseSlewInsteadOfSync = p.useSlewInsteadOfSync.Value;
+                    }
+                }
+
+                return true;
+            });
+
+            if (!ok) {
+                HttpContext.Response.StatusCode = 409;
+                await JsonAsync(new { ok = false, error = "Settings not available yet (importsReady=false?)" });
+                return;
+            }
+
+            // After applying: return the current settings snapshot.
+            var settings = await RunOnUiAsync(() => {
+                var s = _dockable.PluginSettings?.Settings;
+
+                var camera = new {
+                    driver = _dockable.SelectedSecondaryCameraProgId ?? _dockable.SecondaryCameraService?.ProgId,
+                    connected = _dockable.IsSecondaryConnected,
+                    exposureSeconds = _dockable.GuideExposureSeconds,
+                    binning = _dockable.GuideBinning,
+                    gain = _dockable.GuideGain,
+                    focalLengthMm = _dockable.GuideFocalLengthMm,
+                    useCameraPixelSize = _dockable.UseCameraPixelSize,
+                    pixelSizeUm = _dockable.GuidePixelSizeUm,
+                    scopeScaleArcsecPerPixel = ComputeArcsecPerPixel(_dockable.GuideFocalLengthMm, _dockable.GuidePixelSizeUm),
+                    previewDebayerEnabled = _dockable.PreviewDebayerEnabled,
+                    previewAutoStretchEnabled = _dockable.PreviewAutoStretchEnabled,
+                    previewUnlinkedStretchEnabled = _dockable.PreviewUnlinkedStretchEnabled,
+                };
+
+                const double eps = 1e-6;
+                var ra = _dockable.OffsetRaArcsec;
+                var dec = _dockable.OffsetDecArcsec;
+                var hasDelta = Math.Abs(ra) > eps || Math.Abs(dec) > eps;
+
+                var qw = _dockable.RotationQw;
+                var qx = _dockable.RotationQx;
+                var qy = _dockable.RotationQy;
+                var qz = _dockable.RotationQz;
+                var hasRot = Math.Abs(qw - 1.0) > eps || Math.Abs(qx) > eps || Math.Abs(qy) > eps || Math.Abs(qz) > eps;
+                var offsetSet = hasDelta || hasRot;
+
+                var scope = new {
+                    mountConnected = _dockable.IsMountConnected,
+                    mountState = _dockable.MountState.ToString(),
+                    offsetEnabled = _dockable.OffsetEnabled,
+                    offsetMode = _dockable.OffsetMode.ToString(),
+                    offsetSet,
+                    offsetRaArcsec = ra,
+                    offsetDecArcsec = dec,
+                    rotation = new { qw, qx, qy, qz },
+                    offsetLastCalibratedUtc = _dockable.OffsetLastCalibratedUtc
+                };
+
+                var platesolve = new {
+                    centeringThresholdArcmin = s?.CenteringThresholdArcmin ?? 1.0,
+                    centeringMaxAttempts = s?.CenteringMaxAttempts ?? 5,
+                    useSlewInsteadOfSync = _dockable.UseSlewInsteadOfSync,
+                };
+
+                return new { ok = true, camera, scope, platesolve };
+            });
+
+            await JsonAsync(settings);
+        }
+
         [Route(HttpVerbs.Post, "/platesolveplus/capture")]
         public async Task CaptureOnly() {
             var jobId = Guid.NewGuid().ToString("N");
@@ -350,6 +546,46 @@ namespace NINA.Plugins.PlateSolvePlus.Services.Api {
             await JsonAsync(new { jobId, result, status });
         }
 
+        [Route(HttpVerbs.Post, "/platesolveplus/offset/reset")]
+        public async Task ResetOffset() {
+            var jobId = Guid.NewGuid().ToString("N");
+            await _ws.BroadcastAsync(new PlateSolvePlusWsEvent("OffsetResetStarted", new { jobId, utc = DateTime.UtcNow }));
+
+            var ok = await RunOnUiAsync(() => {
+                var s = _dockable.PluginSettings?.Settings;
+                if (s == null) return false;
+                s.ResetOffset();
+                return true;
+            });
+
+            var status = await RunOnUiAsync(() => _dockable.GetApiStatusObject());
+            await _ws.BroadcastAsync(new PlateSolvePlusWsEvent("OffsetResetFinished", new { jobId, ok, utc = DateTime.UtcNow, status }));
+
+            await JsonAsync(new { jobId, ok, status });
+        }
+
+        [Route(HttpVerbs.Post, "/platesolveplus/offset/reset-rotation")]
+        public async Task ResetRotationOffset() {
+            var jobId = Guid.NewGuid().ToString("N");
+            await _ws.BroadcastAsync(new PlateSolvePlusWsEvent("RotationOffsetResetStarted", new { jobId, utc = DateTime.UtcNow }));
+
+            var ok = await RunOnUiAsync(() => {
+                var s = _dockable.PluginSettings?.Settings;
+                if (s == null) return false;
+                s.RotationQw = 1.0;
+                s.RotationQx = 0.0;
+                s.RotationQy = 0.0;
+                s.RotationQz = 0.0;
+                s.OffsetLastCalibratedUtc = null;
+                return true;
+            });
+
+            var status = await RunOnUiAsync(() => _dockable.GetApiStatusObject());
+            await _ws.BroadcastAsync(new PlateSolvePlusWsEvent("RotationOffsetResetFinished", new { jobId, ok, utc = DateTime.UtcNow, status }));
+
+            await JsonAsync(new { jobId, ok, status });
+        }
+
         [Route(HttpVerbs.Get, "/platesolveplus/preview/latest.jpg")]
         public async Task GetLatestPreviewJpeg() {
             // NOTE: We run on UI thread because BitmapSource access/encoding can be dispatcher-affine.
@@ -379,6 +615,18 @@ namespace NINA.Plugins.PlateSolvePlus.Services.Api {
             HttpContext.Response.Headers["Cache-Control"] = "no-store";
             var json = JsonSerializer.Serialize(obj, new JsonSerializerOptions { WriteIndented = false });
             await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
+        }
+
+        private static double ComputeArcsecPerPixel(double focalLengthMm, double pixelSizeUm) {
+            // Image scale: 206.265 * pixel_size(um) / focal_length(mm)
+            if (focalLengthMm <= 0 || pixelSizeUm <= 0) return 0;
+            return 206.265 * (pixelSizeUm / focalLengthMm);
+        }
+
+        private static double Clamp(double v, double min, double max) {
+            if (v < min) return min;
+            if (v > max) return max;
+            return v;
         }
 
         // Camera Interface
