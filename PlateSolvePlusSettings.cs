@@ -317,5 +317,8 @@ namespace NINA.Plugins.PlateSolvePlus {
             }
         }
 
-}
+        public bool PreviewDebayerEnabled { get; internal set; }
+        public bool PreviewAutoStretchEnabled { get; internal set; }
+        public bool PreviewUnlinkedStretchEnabled { get; internal set; }
+    }
 }
