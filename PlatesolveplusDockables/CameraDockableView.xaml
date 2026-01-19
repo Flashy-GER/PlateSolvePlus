@@ -9,9 +9,9 @@
 
     <Grid Margin="10">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>  <!-- Header / Status -->
-            <RowDefinition Height="Auto"/>  <!-- Camera selection / buttons -->
-            <RowDefinition Height="*"/>     <!-- Two-column content area -->
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
         <!-- =========================
@@ -29,7 +29,6 @@
                            FontWeight="SemiBold"
                            FontSize="14"/>
 
-                <!-- Details are multi-line (RA/Dec, deltas, hints). Use a readonly TextBox to preserve formatting. -->
                 <TextBox Text="{Binding DetailsText}"
                          Margin="0,6,0,0"
                          IsReadOnly="True"
@@ -43,68 +42,65 @@
         </Border>
 
         <!-- =========================
-             Secondary Camera + Buttons
+             Secondary Camera + Actions
              ========================= -->
-        <GroupBox Grid.Row="1" Header="Sekundärkamera / Aktionen" Margin="0,0,0,10">
+        <GroupBox Grid.Row="1" Header="Secondary Camera / Actions" Margin="0,0,0,10">
             <StackPanel Margin="10">
 
-                <TextBlock Text="Kamera auswählen:" Margin="0,0,0,4" Opacity="0.85"/>
+                <TextBlock Text="Select camera:" Margin="0,0,0,4" Opacity="0.85"/>
                 <ComboBox ItemsSource="{Binding SecondaryCameraDevices}"
                           SelectedItem="{Binding SelectedSecondaryCamera}"
                           DisplayMemberPath="Name"
                           Margin="0,0,0,10"/>
 
                 <WrapPanel Margin="0,0,0,10">
-                    <Button Content="ASCOM neu suchen"
+                    <Button Content="Rescan ASCOM"
                             Width="120"
                             Margin="0,0,8,8"
                             Command="{Binding RefreshSecondaryCameraListCommand}"/>
 
-                    <Button Content="Treiber-Einstellungen"
+                    <Button Content="Driver Settings"
                             Width="120"
                             Margin="0,0,8,8"
                             Command="{Binding OpenDriverSettingsCommand}"/>
 
-                    <Button Content="Verbinden"
+                    <Button Content="Connect"
                             Width="90"
                             Margin="0,0,8,8"
                             Command="{Binding ConnectSecondaryCommand}"/>
 
-                    <Button Content="Trennen"
+                    <Button Content="Disconnect"
                             Width="90"
                             Margin="0,0,8,8"
                             Command="{Binding DisconnectSecondaryCommand}"/>
 
-                    <!-- Capture only -->
                     <Button Content="Capture Only"
                             Width="110"
                             Margin="0,0,8,8"
                             Command="{Binding CaptureOnlyCommand}"
                             IsEnabled="{Binding CanCaptureOnly}"/>
 
-                    <!-- Capture + Sync/Slew -->
                     <Button Content="{Binding CaptureAndSolveButtonText}"
                             Width="140"
                             Margin="0,0,8,8"
                             Command="{Binding CaptureAndSolveCommand}"
                             IsEnabled="{Binding CanCaptureAndSolveAction}"/>
 
-                    <Button Content="Offset kalibrieren"
+                    <Button Content="Calibrate Offset"
                             Width="140"
                             Margin="0,0,8,8"
                             Command="{Binding CalibrateOffsetCommand}"
                             IsEnabled="{Binding CanCalibrateOffset}"/>
                 </WrapPanel>
 
-                <CheckBox Content="Capture + Slew (Center) statt Capture + Sync"
+                <CheckBox Content="Use Capture + Slew (Center) instead of Capture + Sync"
                           IsChecked="{Binding UseSlewInsteadOfSync}"
                           Margin="0,0,0,10"/>
 
-
                 <!-- Target (main) for: Slew to Target + Center -->
-                <GroupBox Header="Target (Main, Grad)" Margin="0,0,0,10">
+                <GroupBox Header="Target (Main, Degrees)" Margin="0,0,0,10">
                     <StackPanel Margin="10">
-                        <TextBlock Text="Koordinaten in Grad (Main-Sky)."
+                        <TextBlock Text="Coordinates in degrees (main sky)."
                                    Opacity="0.75"
                                    Margin="0,0,0,8"/>
 
@@ -112,18 +108,18 @@
                             <TextBlock Text="RA°" Width="40" VerticalAlignment="Center"/>
                             <TextBox Width="120"
                                      Text="{Binding TargetRaDeg, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.######}}"
-                                     ToolTip="Rektaszension in Grad (0..360)"/>
+                                     ToolTip="Right ascension in degrees (0..360)"/>
                             <TextBlock Text="Dec°" Width="50" Margin="12,0,0,0" VerticalAlignment="Center"/>
                             <TextBox Width="120"
                                      Text="{Binding TargetDecDeg, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.######}}"
-                                     ToolTip="Deklination in Grad (-90..+90)"/>
+                                     ToolTip="Declination in degrees (-90..+90)"/>
                         </StackPanel>
 
-                        <Button Content="Zum Target slewen + Center"
+                        <Button Content="Slew to target + center"
                                 Width="200"
                                 Command="{Binding SlewToTargetAndCenterCommand}"
                                 IsEnabled="{Binding CanSlewToTargetAndCenter}"
-                                ToolTip="Slew zum Target und anschließend Center (Sekundärkamera + Offset-Mapping)."/>
+                                ToolTip="Slew to the target and then center using the secondary camera and offset mapping."/>
                     </StackPanel>
                 </GroupBox>
 
@@ -144,8 +140,6 @@
 
         <!-- =========================
              Two-column content area
-             Left: Solve + Settings
-             Right: Image Preview (Solved Image)
              ========================= -->
         <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
@@ -160,25 +154,22 @@
                           Margin="0,0,10,0">
                 <StackPanel>
 
-                    <!-- Solve Output -->
-                    <GroupBox Header="Ergebnisse" Margin="0,0,0,10">
+                    <GroupBox Header="Results" Margin="0,0,0,10">
                         <StackPanel Margin="10">
 
-                            <TextBlock Text="Platesolve"
+                            <TextBlock Text="Plate Solve"
                                        FontWeight="SemiBold"
                                        Margin="0,0,0,6"/>
 
-                            <!-- 1) Last guider solve text -->
                             <TextBlock Text="{Binding LastGuiderSolveText}"
                                        TextWrapping="Wrap"
                                        FontFamily="Consolas"
                                        Margin="0,0,0,8"/>
 
-                            <TextBlock Text="Korrigiert (Offset)"
+                            <TextBlock Text="Corrected (Offset)"
                                        FontWeight="SemiBold"
                                        Margin="0,4,0,6"/>
 
-                            <!-- 2) corrected coordinates after offset -->
                             <TextBlock Text="{Binding CorrectedSolveText}"
                                        TextWrapping="Wrap"
                                        FontFamily="Consolas"
@@ -186,11 +177,10 @@
 
                             <Separator Margin="0,4,0,8"/>
 
-                            <TextBlock Text="Solver-Details"
+                            <TextBlock Text="Solver Details"
                                        FontWeight="SemiBold"
                                        Margin="0,0,0,6"/>
 
-                            <!-- 3) Last solve result (raw / summary) -->
                             <TextBox Text="{Binding LastSolveSummary}"
                                      TextWrapping="Wrap"
                                      IsReadOnly="True"
@@ -200,34 +190,26 @@
                         </StackPanel>
                     </GroupBox>
 
-                    <!-- Readonly camera settings -->
-                    <GroupBox Header="Kamera-Einstellungen (read-only)" Margin="0,0,0,10">
+                    <GroupBox Header="Camera Settings (read-only)" Margin="0,0,0,10">
                         <Grid Margin="10">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="220"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
 
-                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Exposure (sec)" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Exposure (sec)"/>
                             <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding GuideExposureSeconds}"/>
 
-                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Gain (-1 = Auto)" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Gain (-1 = Auto)"/>
                             <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding GuideGain}"/>
 
-                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Binning" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Binning"/>
                             <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding GuideBinning}"/>
 
-                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Focal Length (mm)" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Focal Length (mm)"/>
                             <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding GuideFocalLengthMm}"/>
 
-                            <TextBlock Grid.Row="4" Grid.Column="0" Text="Pixel Size (µm)" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="4" Grid.Column="0" Text="Pixel Size (µm)"/>
                             <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding GuidePixelSizeUm}"/>
                         </Grid>
                     </GroupBox>
@@ -235,31 +217,22 @@
                 </StackPanel>
             </ScrollViewer>
 
-            <!-- RIGHT COLUMN: Image Preview -->
-            <GroupBox Grid.Column="1" Header="Bildvorschau (Solved)">
+            <!-- RIGHT COLUMN -->
+            <GroupBox Grid.Column="1" Header="Image Preview (Solved)">
                 <Grid Margin="10">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
 
-                    <!-- Preview options (rendering happens in VM/service) -->
-                    <WrapPanel Grid.Row="0" Margin="0,0,0,8">
-                        <TextBlock Text="Darstellung" Margin="0,0,12,0" Opacity="0.75"/>
-
+                    <WrapPanel Margin="0,0,0,8">
+                        <TextBlock Text="Rendering" Margin="0,0,12,0" Opacity="0.75"/>
                         <CheckBox Content="Auto Stretch"
                                   IsChecked="{Binding PreviewAutoStretchEnabled}"
-                                  ToolTip="Auto Stretch wird im ViewModel/Service gerendert."/>
+                                  ToolTip="Auto stretch is rendered in the ViewModel/service."/>
                     </WrapPanel>
 
-                    <Border Grid.Row="1"
-                            BorderThickness="1"
+                    <Border BorderThickness="1"
                             BorderBrush="#33000000"
                             CornerRadius="4"
                             Padding="6">
                         <Grid>
-                            <!-- Background placeholder feel -->
                             <Border Background="#08000000"/>
 
                             <Image Stretch="Uniform"
@@ -272,8 +245,7 @@
                                 </Image.Source>
                             </Image>
 
-                            <!-- No image hint -->
-                            <TextBlock Text="Vorschau nicht verfügbar"
+                            <TextBlock Text="Preview not available"
                                        HorizontalAlignment="Center"
                                        VerticalAlignment="Center"
                                        Opacity="0.55"
@@ -296,14 +268,12 @@
                         </Grid>
                     </Border>
 
-                    <TextBlock Grid.Row="2"
-                               Margin="0,8,0,0"
+                    <TextBlock Margin="0,8,0,0"
                                Text="{Binding PreviewInfoText}"
                                Opacity="0.8"/>
                 </Grid>
             </GroupBox>
 
         </Grid>
-
     </Grid>
 </UserControl>
