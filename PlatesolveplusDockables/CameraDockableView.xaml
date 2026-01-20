@@ -92,10 +92,26 @@
                             Command="{Binding CalibrateOffsetCommand}"
                             IsEnabled="{Binding CanCalibrateOffset}"/>
                 </WrapPanel>
+                <Grid Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="10"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
 
-                <CheckBox Content="Use Capture + Slew (Center) instead of Capture + Sync"
-                          IsChecked="{Binding UseSlewInsteadOfSync}"
-                          Margin="0,0,0,10"/>
+                    <!-- the switch -->
+                    <CheckBox Grid.Column="0"
+                              IsChecked="{Binding UseSlewInsteadOfSync}"
+                              VerticalAlignment="Center"/>
+
+                    <!-- the label text -->
+                    <TextBlock Grid.Column="2"
+                               Text="Use Capture + Slew (Center) instead of Capture + Sync"
+                               Opacity="0.85"
+                               VerticalAlignment="Center"
+                               TextWrapping="Wrap"/>
+                </Grid>
+
 
                 <!-- Target (main) for: Slew to Target + Center -->
                 <GroupBox Header="Target (Main, Degrees)" Margin="0,0,0,10">
@@ -104,16 +120,23 @@
                                    Opacity="0.75"
                                    Margin="0,0,0,8"/>
 
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                            <TextBlock Text="RA°" Width="40" VerticalAlignment="Center"/>
-                            <TextBox Width="120"
-                                     Text="{Binding TargetRaDeg, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.######}}"
-                                     ToolTip="Right ascension in degrees (0..360)"/>
-                            <TextBlock Text="Dec°" Width="50" Margin="12,0,0,0" VerticalAlignment="Center"/>
-                            <TextBox Width="120"
-                                     Text="{Binding TargetDecDeg, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.######}}"
-                                     ToolTip="Declination in degrees (-90..+90)"/>
-                        </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                    <TextBlock Text="RA°" Width="40" VerticalAlignment="Center"/>
+                    <TextBox Width="120"
+                             Style="{x:Null}"
+                             Text="{Binding TargetRaDeg, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="Right ascension in degrees (0..360)"/>
+
+                    <TextBox Width="120"
+                             Style="{x:Null}"
+                             Text="{Binding TargetDecDeg, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="Declination in degrees (-90..+90)"/>
+                </StackPanel>
+
+                <!-- debug line: remove later -->
+                <TextBlock Text="{Binding TargetRaDeg, FallbackValue=NO_DC}"
+                           Opacity="0.5"
+                           FontFamily="Consolas"/>
 
                         <Button Content="Slew to target + center"
                                 Width="200"
@@ -192,25 +215,72 @@
 
                     <GroupBox Header="Camera Settings (read-only)" Margin="0,0,0,10">
                         <Grid Margin="10">
+
+                            <!-- Columns -->
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="220"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
 
-                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Exposure (sec)"/>
-                            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding GuideExposureSeconds}"/>
+                            <!-- Rows -->
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
 
-                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Gain (-1 = Auto)"/>
-                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding GuideGain}"/>
+                            <!-- Exposure -->
+                            <TextBlock Grid.Row="0" Grid.Column="0"
+                                       Text="Exposure (sec)"
+                                       Opacity="0.8"
+                                       VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="0" Grid.Column="1"
+                                       Text="{Binding GuideExposureSeconds}"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center"/>
 
-                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Binning"/>
-                            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding GuideBinning}"/>
+                            <!-- Gain -->
+                            <TextBlock Grid.Row="1" Grid.Column="0"
+                                       Text="Gain (-1 = Auto)"
+                                       Opacity="0.8"
+                                       Margin="0,4,0,0"/>
+                            <TextBlock Grid.Row="1" Grid.Column="1"
+                                       Text="{Binding GuideGain}"
+                                       FontWeight="SemiBold"
+                                       Margin="0,4,0,0"/>
 
-                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Focal Length (mm)"/>
-                            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding GuideFocalLengthMm}"/>
+                            <!-- Binning -->
+                            <TextBlock Grid.Row="2" Grid.Column="0"
+                                       Text="Binning"
+                                       Opacity="0.8"
+                                       Margin="0,4,0,0"/>
+                            <TextBlock Grid.Row="2" Grid.Column="1"
+                                       Text="{Binding GuideBinning}"
+                                       FontWeight="SemiBold"
+                                       Margin="0,4,0,0"/>
 
-                            <TextBlock Grid.Row="4" Grid.Column="0" Text="Pixel Size (µm)"/>
-                            <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding GuidePixelSizeUm}"/>
+                            <!-- Focal length -->
+                            <TextBlock Grid.Row="3" Grid.Column="0"
+                                       Text="Focal Length (mm)"
+                                       Opacity="0.8"
+                                       Margin="0,4,0,0"/>
+                            <TextBlock Grid.Row="3" Grid.Column="1"
+                                       Text="{Binding GuideFocalLengthMm}"
+                                       FontWeight="SemiBold"
+                                       Margin="0,4,0,0"/>
+
+                            <!-- Pixel size -->
+                            <TextBlock Grid.Row="4" Grid.Column="0"
+                                       Text="Pixel Size (µm)"
+                                       Opacity="0.8"
+                                       Margin="0,4,0,0"/>
+                            <TextBlock Grid.Row="4" Grid.Column="1"
+                                       Text="{Binding GuidePixelSizeUm}"
+                                       FontWeight="SemiBold"
+                                       Margin="0,4,0,0"/>
+
                         </Grid>
                     </GroupBox>
 
