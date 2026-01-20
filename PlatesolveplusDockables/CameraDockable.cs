@@ -1268,7 +1268,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                     };
 
                     var preview = previewRenderService.RenderPreview(
-                        new CapturedFrame(frame.Width, frame.Height, frame.BitDepth, frame.Pixels),
+                        new CapturedFrame(frame.Width, frame.Height, frame.BitDepth, frame.Pixels, isBayered: true, bayerPattern: BayerPattern.RGGB),
                         opts);
 
                     await System.Windows.Application.Current.Dispatcher.InvokeAsync(() => {
