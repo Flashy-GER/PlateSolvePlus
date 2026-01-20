@@ -1,6 +1,31 @@
-﻿# PlateSolvePlus
+﻿# PlateSolvePlus Changelog
 
-## 1.0.0.2
+## 1.0.0.3
+## 🐛 Bugfixes & Verbesserungen
+### Bugfix: Falsche Offset-Anzeige nach Reset
+- Behoben: Nach dem Zurücksetzen des Offsets wurden in der UI weiterhin alte Offset-Werte angezeigt.
+- Die Anzeige aktualisiert sich jetzt korrekt nach einem Reset.
+
+### Bugfix: Falsche Berechnung der Quaternion
+- Behoben: Die Quaternion wurde fälschlicherweise aus den alten Offset-Werten berechnet.
+- Die Quaternion wird jetzt korrekt aus den aktuellen Rotationswerten berechnet.
+- Die Quaternion-Property wurde so angepasst, dass sie immer die aktuellen Rotationswerte widerspiegelt.
+
+### Verbesserte UI-Performance
+- Optimierungen vorgenommen, um die UI-Reaktionsfähigkeit bei schnellen Offset-Änderungen zu verbessern.
+- Reduzierung unnötiger UI-Updates durch verbesserte PropertyChanged-Logik.
+- Die Offset-Anzeige in den **Options** aktualisiert sich jetzt effizienter.
+- Die Live-Updates und Preview-Funktionalität wurden optimiert, um eine flüssigere Benutzererfahrung zu gewährleisten.
+
+### Touch N Stars Integration verbessert
+- Weitere Anpassungen vorgenommen, um die Kompatibilität mit Touch N Stars zu verbessern.
+- Fehlerbehebungen und Optimierungen für die TnS API-Integration.
+- Verbesserte Synchronisation der Offset-Daten zwischen PlateSolvePlus und Touch N Stars.
+- Stabilitätsverbesserungen bei der Kommunikation mit Touch N Stars.
+
+### üversetzungen aktualisiert
+- Aktualisierte Übersetzungen für alle neuen und geänderten UI-Elemente. DE, EN
+
 ## 🔧 Offset-Handling & UI-Refactoring
 
 ### Offset-Logik vereinfacht
