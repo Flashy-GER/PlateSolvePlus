@@ -7,6 +7,19 @@
              d:DesignHeight="900"
              d:DesignWidth="520">
 
+
+    <UserControl.Resources>
+        <!-- Small status indicator dot (neutral/green/red by triggers) -->
+        <Style x:Key="StatusDot" TargetType="Ellipse">
+            <Setter Property="Width" Value="10"/>
+            <Setter Property="Height" Value="10"/>
+            <Setter Property="Margin" Value="0,0,6,0"/>
+            <Setter Property="Fill" Value="#999"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+    </UserControl.Resources>
+
+
     <Grid Margin="10">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -116,33 +129,144 @@
                 <!-- Target (main) for: Slew to Target + Center -->
                 <GroupBox Header="Target (Main, Degrees)" Margin="0,0,0,10">
                     <StackPanel Margin="10">
-                        <TextBlock Text="Coordinates in degrees (main sky)."
+                        <TextBlock Text="Current target coordinates coming from N.I.N.A. (Framing Assistant)."
                                    Opacity="0.75"
                                    Margin="0,0,0,8"/>
 
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                    <TextBlock Text="RA°" Width="40" VerticalAlignment="Center"/>
-                    <TextBox Width="120"
-                             Style="{x:Null}"
-                             Text="{Binding TargetRaDeg, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                             ToolTip="Right ascension in degrees (0..360)"/>
+                        <!-- Readiness / status indicators -->
+                        <WrapPanel Margin="0,0,0,10">
 
-                    <TextBox Width="120"
-                             Style="{x:Null}"
-                             Text="{Binding TargetDecDeg, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                             ToolTip="Declination in degrees (-90..+90)"/>
-                </StackPanel>
+                            <!-- Target -->
+                            <StackPanel Orientation="Horizontal" Margin="0,0,12,0">
+                                <Ellipse>
+                                    <Ellipse.Style>
+                                        <Style TargetType="Ellipse" BasedOn="{StaticResource StatusDot}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding TargetAvailable}" Value="True">
+                                                    <Setter Property="Fill" Value="#2E7D32"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding TargetAvailable}" Value="False">
+                                                    <Setter Property="Fill" Value="#C62828"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Ellipse.Style>
+                                </Ellipse>
+                                <TextBlock Text="Target" Opacity="0.85"/>
+                            </StackPanel>
 
-                <!-- debug line: remove later -->
-                <TextBlock Text="{Binding TargetRaDeg, FallbackValue=NO_DC}"
-                           Opacity="0.5"
-                           FontFamily="Consolas"/>
+                            <!-- Mount (ready for capture+solve) -->
+                            <StackPanel Orientation="Horizontal" Margin="0,0,12,0">
+                                <Ellipse>
+                                    <Ellipse.Style>
+                                        <Style TargetType="Ellipse" BasedOn="{StaticResource StatusDot}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding CanCaptureAndSolveAction}" Value="True">
+                                                    <Setter Property="Fill" Value="#2E7D32"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding CanCaptureAndSolveAction}" Value="False">
+                                                    <Setter Property="Fill" Value="#C62828"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Ellipse.Style>
+                                </Ellipse>
+                                <TextBlock Text="Mount" Opacity="0.85"/>
+                            </StackPanel>
+
+                            <!-- Secondary camera -->
+                            <StackPanel Orientation="Horizontal" Margin="0,0,12,0">
+                                <Ellipse>
+                                    <Ellipse.Style>
+                                        <Style TargetType="Ellipse" BasedOn="{StaticResource StatusDot}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsSecondaryConnected}" Value="True">
+                                                    <Setter Property="Fill" Value="#2E7D32"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsSecondaryConnected}" Value="False">
+                                                    <Setter Property="Fill" Value="#C62828"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Ellipse.Style>
+                                </Ellipse>
+                                <TextBlock Text="Secondary" Opacity="0.85"/>
+                            </StackPanel>
+
+                            <!-- Offset -->
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse>
+                                    <Ellipse.Style>
+                                        <Style TargetType="Ellipse" BasedOn="{StaticResource StatusDot}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding OffsetEnabled}" Value="True">
+                                                    <Setter Property="Fill" Value="#2E7D32"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding OffsetEnabled}" Value="False">
+                                                    <Setter Property="Fill" Value="#C62828"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Ellipse.Style>
+                                </Ellipse>
+                                <TextBlock Text="Offset" Opacity="0.85"/>
+                            </StackPanel>
+                        </WrapPanel>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="40"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="RA°" VerticalAlignment="Center"/>
+                            <TextBox Grid.Row="0" Grid.Column="1"
+                                     IsReadOnly="True"
+                                     IsReadOnlyCaretVisible="True"
+                                     Focusable="True"
+                                     ToolTip="Right ascension in degrees (0..360)"
+                                     Margin="0,0,0,6">
+                                <TextBox.Style>
+                                    <Style TargetType="TextBox">
+                                        <Setter Property="Text" Value="{Binding TargetRaDeg, Mode=OneWay, StringFormat={}{0:0.000000}}"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding TargetAvailable}" Value="False">
+                                                <Setter Property="Text" Value="–"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBox.Style>
+                            </TextBox>
+
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Dec°" VerticalAlignment="Center"/>
+                            <TextBox Grid.Row="1" Grid.Column="1"
+                                     IsReadOnly="True"
+                                     IsReadOnlyCaretVisible="True"
+                                     Focusable="True"
+                                     ToolTip="Declination in degrees (-90..+90)">
+                                <TextBox.Style>
+                                    <Style TargetType="TextBox">
+                                        <Setter Property="Text" Value="{Binding TargetDecDeg, Mode=OneWay, StringFormat={}{0:0.000000}}"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding TargetAvailable}" Value="False">
+                                                <Setter Property="Text" Value="–"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBox.Style>
+                            </TextBox>
+                        </Grid>
 
                         <Button Content="Slew to target + center"
                                 Width="200"
                                 Command="{Binding SlewToTargetAndCenterCommand}"
                                 IsEnabled="{Binding CanSlewToTargetAndCenter}"
-                                ToolTip="Slew to the target and then center using the secondary camera and offset mapping."/>
+                                ToolTip="Slew to the target and then center using the secondary camera and offset mapping."
+                                Margin="0,10,0,0"/>
                     </StackPanel>
                 </GroupBox>
 

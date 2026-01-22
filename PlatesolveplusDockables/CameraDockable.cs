@@ -10,6 +10,7 @@ using NINA.Plugins.PlateSolvePlus.Services;
 using NINA.Plugins.PlateSolvePlus.Services.Api;
 using NINA.Plugins.PlateSolvePlus.Utils;
 using NINA.Profile.Interfaces;
+using NINA.WPF.Base.Interfaces.ViewModel;
 using NINA.WPF.Base.ViewModel;
 using System;
 using System.Collections.ObjectModel;
@@ -33,7 +34,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         NINA.Equipment.Interfaces.ViewModel.IDockableVM,
         IDisposable,
         IPartImportsSatisfiedNotification {
-
         private const string FallbackSecondaryCameraProgId = "ASCOM.Simulator.Camera";
 
         private readonly IProfileService profileService;
@@ -58,6 +58,9 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         [Import(AllowDefault = true)]
         public IPlateSolverFactory? PlateSolverFactory { get; set; }
 
+        [Import(AllowDefault = true)]
+        public IFramingAssistantVM? FramingAssistantVM { get; set; }
+
         private bool importsReady;
         private bool disposed;
 
@@ -75,6 +78,11 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         private bool apiRequireTokenState;
         private string? apiTokenState;
         private bool apiStateInitialized;
+
+        // ===== Framing Assistant Target Tracking =====
+        private bool framingTargetHooked = false;
+        private object? framingTargetVmObj = null;
+        private INotifyPropertyChanged? framingTargetNpc = null;
 
         internal IAscomDeviceDiscoveryService AscomDiscovery => Context.AscomDiscovery;
         internal ISecondaryCameraService SecondaryCameraService => EnsureSecondaryCameraService();
@@ -95,7 +103,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 UpdateConnectionStateFromService();
             }
         }
-
         private string? selectedSecondaryCameraProgId;
         public string? SelectedSecondaryCameraProgId {
             get => selectedSecondaryCameraProgId;
@@ -169,6 +176,132 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             if (mountPollTimer == null) return;
             try { mountPollTimer.Stop(); } catch { }
             mountPollTimer = null;
+        }
+
+        private bool targetAvailable;
+        public bool TargetAvailable {
+            get => targetAvailable;
+            private set {
+                if (targetAvailable == value) return;
+                targetAvailable = value;
+                RaisePropertyChanged(nameof(TargetAvailable));
+
+                // wichtig: Button / UI-States neu bewerten
+                RaiseCaptureCalibrateUiState();
+            }
+        }
+
+
+        private void WireFramingAssistantTargetTracking() {
+
+            if (framingTargetHooked) return;
+
+            // 1) Preferred: MEF import (if available)
+            object? vmObj = FramingAssistantVM;
+
+            // If we can't observe changes, we still do initial sync and rely on polling / manual triggers
+            if (vmObj is not INotifyPropertyChanged npc) {
+                framingTargetHooked = true;
+                SyncTargetFromNina();
+                return;
+            }
+
+            framingTargetNpc = npc;
+            framingTargetNpc.PropertyChanged += FramingTargetNpc_PropertyChanged;
+            framingTargetHooked = true;
+
+            // initial sync
+            SyncTargetFromNina();
+        }
+
+        private void UnwireFramingAssistantTargetTracking() {
+            if (!framingTargetHooked) return;
+            try {
+                if (framingTargetNpc != null) framingTargetNpc.PropertyChanged -= FramingTargetNpc_PropertyChanged;
+            } catch { }
+            framingTargetNpc = null;
+            framingTargetHooked = false;
+        }
+
+        private void SyncTargetFromNina() {
+            try {
+                var vm = FramingAssistantVM;
+                if (vm == null) return;
+
+                // Debug-Log: zeigt, ob NINA die HMS/DMS-Werte setzt
+                Logger.Debug(
+                    $"[PlateSolvePlus] Framing VM HMS/DMS: " +
+                    $"RA={vm.RAHours:00}:{vm.RAMinutes:00}:{vm.RASeconds:00.###} " +
+                    $"Dec={(vm.NegativeDec ? "-" : "+")}{Math.Abs(vm.DecDegrees):00}:{vm.DecMinutes:00}:{vm.DecSeconds:00.###}"
+                );
+
+                if (TryGetTargetRaDecFromFramingAssistant(vm, out var raDeg, out var decDeg)) {
+                    Logger.Debug($"[PlateSolvePlus] Target parsed: RA={raDeg:F6}°, Dec={decDeg:F6}°");
+                    TargetRaDeg = raDeg;
+                    TargetDecDeg = decDeg;
+                } else {
+                    Logger.Debug("[PlateSolvePlus] Target NOT available from FramingAssistant (HMS/DMS invalid)");
+                }
+                if (TryGetTargetRaDecFromFramingAssistant(vm, out raDeg, out decDeg)) {
+                    TargetAvailable = true;
+                    TargetRaDeg = raDeg;
+                    TargetDecDeg = decDeg;
+                } else {
+                    TargetAvailable = false;
+                }
+
+            } catch (Exception ex) {
+                Logger.Debug($"[PlateSolvePlus] SyncTargetFromNina exception: {ex.Message}");
+            }
+        }
+
+
+        private static bool TryGetTargetRaDecFromFramingAssistant(
+            NINA.WPF.Base.Interfaces.ViewModel.IFramingAssistantVM vm,
+            out double raDeg,
+            out double decDeg) {
+            raDeg = 0;
+            decDeg = 0;
+
+            // RA: Hours/Minutes/Seconds -> degrees
+            // RA hours range is typically 0..23, but be tolerant.
+            var h = vm.RAHours;
+            var m = vm.RAMinutes;
+            var s = vm.RASeconds;
+
+            if (m < 0 || m >= 60) return false;
+            if (s < 0 || s >= 60) return false;
+
+            var raHours = h + (m / 60.0) + (s / 3600.0);
+            raDeg = NormalizeRaDeg(raHours * 15.0); // 24h => 360°
+
+            // Dec: Degrees/Minutes/Seconds -> degrees (sign handled via NegativeDec)
+            var dd = Math.Abs(vm.DecDegrees); // some versions keep degrees positive and use NegativeDec
+            var dm = vm.DecMinutes;
+            var ds = vm.DecSeconds;
+
+            if (dm < 0 || dm >= 60) return false;
+            if (ds < 0 || ds >= 60) return false;
+
+            var sign = vm.NegativeDec ? -1.0 : 1.0;
+            decDeg = sign * (dd + (dm / 60.0) + (ds / 3600.0));
+            decDeg = Math.Max(-90.0, Math.Min(90.0, decDeg));
+
+            // If everything is still "empty default", treat as unavailable
+            if (Math.Abs(raDeg) < 1e-12 && Math.Abs(decDeg) < 1e-12) return false;
+
+            return true;
+        }
+
+        /// <summary>Reference equality comparer to avoid traversing cycles.</summary>
+        private sealed class ReferenceEqualityComparer : System.Collections.Generic.IEqualityComparer<object> {
+            public static readonly ReferenceEqualityComparer Instance = new ReferenceEqualityComparer();
+            public new bool Equals(object x, object y) => ReferenceEquals(x, y);
+            public int GetHashCode(object obj) => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
+        }
+
+        private void FramingTargetNpc_PropertyChanged(object? sender, PropertyChangedEventArgs e) {
+            SyncTargetFromNina();
         }
 
         // ===== Settings mirror (readonly) =====
@@ -513,7 +646,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             }
         }
 
-[ImportingConstructor]
+        [ImportingConstructor]
         public CameraDockable(IProfileService profileService) : base(profileService) {
             this.profileService = profileService ?? throw new ArgumentNullException(nameof(profileService));
 
@@ -558,6 +691,9 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 HookPluginSettings();
                 HookSettingsBus();
 
+                // Hook framing assistant target tracking
+                WireFramingAssistantTargetTracking();
+
                 WireTelescopeReferenceService();
 
                 StartMountPoll();
@@ -598,6 +734,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             UnhookPluginSettings();
             UnhookSettingsBus();
 
+            UnwireFramingAssistantTargetTracking();
             UnwireTelescopeReferenceService();
             StopMountPoll();
 
@@ -1085,46 +1222,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             }
         }
 
-        private async Task AutoSetOffsetIfMissingAsync(double guiderRaDeg, double guiderDecDeg) {
-            if (PluginSettings?.Settings == null) {
-                StatusText = "Cannot set offset ❌";
-                DetailsText = "PluginSettings.Settings not available.";
-                return;
-            }
-
-            if (TelescopeReferenceService == null) {
-                StatusText = "Cannot set offset ❌";
-                DetailsText = "TelescopeReferenceService not available.";
-                return;
-            }
-
-            if (!TelescopeReferenceService.TryGetCurrentRaDec(out var mainRaDeg, out var mainDecDeg) ||
-                !IsValidRaDec(mainRaDeg, mainDecDeg)) {
-
-                StatusText = "Cannot set offset ❌";
-                DetailsText = "Mount RA/Dec not available (or dummy 0/0).";
-                return;
-            }
-
-            try {
-                var svc = new OffsetService();
-                svc.Calibrate(PluginSettings.Settings, mainRaDeg, mainDecDeg, guiderRaDeg, guiderDecDeg);
-
-                PluginSettings.Settings.OffsetLastCalibratedUtc = DateTime.UtcNow;
-
-                ApplySettings(ReadSettingsFromPluginInstance(), force: false);
-
-                StatusText = "Offset set automatically ✅";
-                DetailsText =
-                    $"Main RA/Dec: {mainRaDeg:0.######}°, {mainDecDeg:0.######}°\n" +
-                    $"Guider RA/Dec: {guiderRaDeg:0.######}°, {guiderDecDeg:0.######}°\n" +
-                    $"Mode: {PluginSettings.Settings.OffsetMode}";
-            } catch (Exception ex) {
-                StatusText = "Auto offset failed ❌";
-                DetailsText = ex.ToString();
-            }
-        }
-
         private (double raDeg, double decDeg)? ComputeCorrectedIfEnabled(double raDeg, double decDeg) {
             if (!HasOffsetSet) return null;
             if (PluginSettings?.Settings == null) return null;
@@ -1194,7 +1291,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             var svc = new OffsetService();
             svc.Calibrate(PluginSettings.Settings, mainRaDeg, mainDecDeg, guiderSolve.raDeg, guiderSolve.decDeg);
 
-                        PluginSettings.Settings.OffsetLastCalibratedUtc = DateTime.UtcNow;
+            PluginSettings.Settings.OffsetLastCalibratedUtc = DateTime.UtcNow;
 
             StatusText = "Offset calibrated ✅";
             DetailsText =
