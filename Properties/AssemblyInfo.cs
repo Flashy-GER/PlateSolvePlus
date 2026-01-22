@@ -7,8 +7,8 @@ using System.Runtime.InteropServices;
 
 // [MANDATORY] The assembly versioning
 //Should be incremented for each new release build of a plugin
-[assembly: AssemblyVersion("1.0.0.3")]
-[assembly: AssemblyFileVersion("1.0.0.3")]
+[assembly: AssemblyVersion("1.0.0.4")]
+[assembly: AssemblyFileVersion("1.0.0.4")]
 
 // [MANDATORY] The name of your plugin
 [assembly: AssemblyTitle("PlateSolvePlus")]
@@ -39,7 +39,7 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyMetadata("Homepage", "https://github.com/Flashy-GER/PlateSolvePlus")]
 
 //[Optional] Common tags that quickly describe your plugin
-[assembly: AssemblyMetadata("Tags", "")]
+[assembly: AssemblyMetadata("Tags", "Platesolve,secondCamera,Offset")]
 
 //[Optional] A link that will show a log of all changes in between your plugin's versions
 [assembly: AssemblyMetadata("ChangelogURL", "https://github.com/Flashy-GER/PlateSolvePlus/blob/dev/CHANGELOG.md")]
@@ -51,7 +51,7 @@ using System.Runtime.InteropServices;
 //[Optional] An additional url to an example example screenshot of your plugin in action
 [assembly: AssemblyMetadata("AltScreenshotURL", "")]
 //[Optional] An in-depth description of your plugin
-[assembly: AssemblyMetadata("LongDescription", @"The plugin allows you to define separate settings for focal length or camera settings, independent of the defined telescope configuration. It also allows you to define an additional camera to be used for plate solving.")]
+[assembly: AssemblyMetadata("LongDescription", @"Notes for 1.0.0.4: new: Center and Slew to Target is possible. Target coordinates from Framing assistent.")]
 
 // Setting ComVisible to false makes the types in this assembly not visible
 // to COM components.  If you need to access a type in this assembly from
