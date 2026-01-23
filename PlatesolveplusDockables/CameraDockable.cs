@@ -255,7 +255,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             }
         }
 
-
         private static bool TryGetTargetRaDecFromFramingAssistant(
             NINA.WPF.Base.Interfaces.ViewModel.IFramingAssistantVM vm,
             out double raDeg,
@@ -422,9 +421,61 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             set { if (correctedSolveText == value) return; correctedSolveText = value; RaisePropertyChanged(nameof(CorrectedSolveText)); }
         }
 
+        private bool _isActionActive;
+        public bool IsActionActive {
+            get => _isActionActive;
+            set {
+                if (SetProperty(ref _isActionActive, value)) {
+                    // UX: whenever action state changes, re-evaluate all enable flags
+                    RaiseCaptureCalibrateUiState();
+                }
+            }
+        }
         // internal cached solves
         private (double raDeg, double decDeg)? lastGuiderSolveDeg;
         private (double raDeg, double decDeg)? lastCorrectedSolveDeg;
+
+        // ===== UX: Action lock (disable buttons while actions run) =====
+        private int actionDepth;
+
+        private IDisposable BeginActionScope() {
+            EnterActionScope();
+            return new ActionScope(this);
+        }
+
+        private sealed class ActionScope : IDisposable {
+            private CameraDockable? owner;
+            public ActionScope(CameraDockable owner) => this.owner = owner;
+            public void Dispose() {
+                var o = owner;
+                owner = null;
+                o?.ExitActionScope();
+            }
+        }
+
+        private void EnterActionScope() {
+            if (Interlocked.Increment(ref actionDepth) == 1) {
+                SetActionActiveSafe(true);
+            }
+        }
+
+        private void ExitActionScope() {
+            var v = Interlocked.Decrement(ref actionDepth);
+            if (v <= 0) {
+                Interlocked.Exchange(ref actionDepth, 0);
+                SetActionActiveSafe(false);
+            }
+        }
+
+        private void SetActionActiveSafe(bool active) {
+            var disp = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
+            if (disp != null && !disp.CheckAccess()) {
+                disp.Invoke(() => IsActionActive = active);
+            } else {
+                IsActionActive = active;
+            }
+        }
+
 
         // ===== Commands =====
         public ICommand RefreshSecondaryCameraListCommand { get; }
@@ -488,19 +539,22 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         public bool CanCaptureAndSolve =>
             importsReady &&
             MountState == MountConnectionState.ConnectedWithCoords &&
-            IsSecondaryConnected;
+            IsSecondaryConnected &&
+            !IsActionActive;
 
         // Capture-only should work without mount coordinates (pure solve).
         public bool CanCaptureOnly =>
             importsReady &&
-            IsSecondaryConnected;
+            IsSecondaryConnected &&
+            !IsActionActive;
 
         // "Center" (Capture + Slew) requires a calibrated offset AND mount coords.
         public bool CanCenterWithOffset =>
             importsReady &&
             MountState == MountConnectionState.ConnectedWithCoords &&
             IsSecondaryConnected &&
-            HasOffsetSet;
+            HasOffsetSet &&
+            !IsActionActive;
 
         // Single enable flag for the Capture+Sync/Slew button in the view.
         // - Sync mode: CanCaptureAndSolve
@@ -511,7 +565,8 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         // Enable flag for the "Slew to Target + Center" button.
         public bool CanSlewToTargetAndCenter =>
             CanCenterWithOffset &&
-            IsValidRaDec(TargetRaDeg, TargetDecDeg);
+            IsValidRaDec(TargetRaDeg, TargetDecDeg) &&
+            !IsActionActive;
 
 
         private bool HasOffsetSet {
@@ -534,7 +589,8 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             MountState == MountConnectionState.ConnectedWithCoords &&
             IsSecondaryConnected &&
             PluginSettings?.Settings != null &&
-            !HasOffsetSet;
+            !HasOffsetSet &&
+            !IsActionActive;
 
         private void RaiseCaptureCalibrateUiState() {
             RaisePropertyChanged(nameof(CanCaptureOnly));
@@ -658,10 +714,9 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             ConnectSecondaryCommand = new SimpleAsyncCommand(ConnectSecondaryAsync);
             DisconnectSecondaryCommand = new SimpleAsyncCommand(DisconnectSecondaryAsync);
 
-            // NEW: capture-only
+            //Command Definitions
             CaptureOnlyCommand = new SimpleAsyncCommand(CaptureOnlyAsync);
 
-            // Existing: capture + sync/slew
             CaptureAndSolveCommand = new SimpleAsyncCommand(CaptureAndSyncOrSlewAsync);
 
             CalibrateOffsetCommand = new SimpleAsyncCommand(CalibrateOffsetAsync);
@@ -1094,8 +1149,10 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         // ============================
 
         private async Task CaptureOnlyAsync() {
-            UpdateMountConnectionState();
+            if (IsActionActive) return;
+            using var _ = BeginActionScope();
 
+            UpdateMountConnectionState();
             var solve = await CaptureAndSolveGuiderAsync(updateUi: true).ConfigureAwait(false);
             if (!solve.success) return;
 
@@ -1150,6 +1207,9 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             }
         }
         private async Task CaptureAndSyncOrSlewAsync() {
+            if (IsActionActive) return;
+            using var _ = BeginActionScope();
+
             UpdateMountConnectionState();
 
             if (MountState != MountConnectionState.ConnectedWithCoords) {
@@ -1240,6 +1300,9 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         }
 
         private async Task CalibrateOffsetAsync() {
+            if (IsActionActive) return;
+            using var _ = BeginActionScope();
+
             if (!importsReady) {
                 StatusText = "Not ready yet…";
                 DetailsText = "MEF imports are not satisfied yet.";
@@ -1555,6 +1618,9 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         }
 
         private async Task OpenDriverSettingsAsync() {
+            if (IsActionActive) return;
+            using var _ = BeginActionScope();
+
             if (!importsReady) {
                 StatusText = "Not ready yet…";
                 DetailsText = "MEF imports are not satisfied yet.";
@@ -1580,6 +1646,9 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         }
 
         private async Task ConnectSecondaryAsync() {
+            if (IsActionActive) return;
+            using var _ = BeginActionScope();
+
             if (!importsReady) {
                 StatusText = "Not ready yet…";
                 DetailsText = "MEF imports are not satisfied yet.";
@@ -1610,13 +1679,16 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         }
 
         private async Task DisconnectSecondaryAsync() {
+            if (IsActionActive) return;
+            using var _ = BeginActionScope();
+
             if (!importsReady) return;
 
             try {
                 StatusText = "Disconnecting secondary camera...";
                 await SecondaryCameraService.DisconnectAsync(CancellationToken.None);
                 // refresh cached service instance so subsequent calls use the same object
-                _ = EnsureSecondaryCameraService();
+                EnsureSecondaryCameraService();
                 UpdateConnectionStateFromService();
                 StatusText = "Disconnected ✅";
             } catch (Exception ex) {
@@ -2009,6 +2081,9 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         // =====================================
 
         private async Task SlewToTargetAndCenterAsync() {
+            if (IsActionActive) return;
+            using var _ = BeginActionScope();
+
             UpdateMountConnectionState();
 
             if (MountState != MountConnectionState.ConnectedWithCoords) {
