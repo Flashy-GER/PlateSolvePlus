@@ -51,7 +51,7 @@ using System.Runtime.InteropServices;
 //[Optional] An additional url to an example example screenshot of your plugin in action
 [assembly: AssemblyMetadata("AltScreenshotURL", "")]
 //[Optional] An in-depth description of your plugin
-[assembly: AssemblyMetadata("LongDescription", @"Notes for 1.0.0.4: new: Center and Slew to Target is possible. Target coordinates from Framing assistent.")]
+[assembly: AssemblyMetadata("LongDescription", @"Notes for 1.0.0.4: new: Center and Slew to Target is possible. Target coordinates from Framing assistant.")]
 
 // Setting ComVisible to false makes the types in this assembly not visible
 // to COM components.  If you need to access a type in this assembly from
