@@ -1,5 +1,12 @@
 ﻿# PlateSolvePlus Changelog
 
+## 1.0.0.4
+## 🐛 Bugfixes & Verbesserungen
+### NEW: Slew to Target and Solve (Target must set in Frame Assistant, Select Target and Load Image)
+### Some UX Fixes and Validations 
+- Busy / not Busy Status
+- disable buttons while busy
+
 ## 1.0.0.3
 ## 🐛 Bugfixes & Verbesserungen
 ### Bugfix: Falsche Offset-Anzeige nach Reset
@@ -26,8 +33,8 @@
 ### üversetzungen aktualisiert
 - Aktualisierte Übersetzungen für alle neuen und geänderten UI-Elemente. DE, EN
 
+## 1.0.0.2
 ## 🔧 Offset-Handling & UI-Refactoring
-
 ### Offset-Logik vereinfacht
 - Der Offset wird jetzt automatisch verwendet, sobald ein gültiger Offset gesetzt ist  
   (Rotation ≠ Identity oder ΔRA / ΔDec ≠ 0).
