@@ -60,6 +60,7 @@
 
   <ItemGroup>
     <Folder Include="Docu\Pics\" />
+    <Folder Include="PlatesolveplusSequenceItems\Templates\" />
   </ItemGroup>
 
 	<Target Name="PostBuild" AfterTargets="Build">

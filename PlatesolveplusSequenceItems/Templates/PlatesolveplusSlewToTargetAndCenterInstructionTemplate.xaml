@@ -1,0 +1,59 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:seq="clr-namespace:NINA.Plugins.PlateSolvePlus.PlatesolveplusSequenceItems"
+                    xmlns:view="clr-namespace:NINA.View.Sequencer;assembly=NINA.Sequencer">
+
+    <DataTemplate DataType="{x:Type seq:PlatesolveplusSlewToTargetAndCenterInstruction}">
+        <view:SequenceBlockView>
+            <view:SequenceBlockView.SequenceItemContent>
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="170"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="170"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.ColumnSpan="4"
+                               Text="Slew to target and center using PlateSolvePlus."
+                               Opacity="0.75"
+                               Margin="0,0,0,10"
+                               TextWrapping="Wrap"/>
+
+                   <CheckBox Grid.Row="1" Grid.ColumnSpan="4"
+                              Content="Use sequence target (recommended)"
+                              ToolTip="Uses the target set in the Sequencer Target Area."
+                              IsChecked="{Binding UseSequenceTarget, UpdateSourceTrigger=PropertyChanged}"
+                              Margin="0,0,0,8"/>
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Target RA (deg)" VerticalAlignment="Center" Margin="0,0,8,6"/>
+                    <TextBox   Grid.Row="2" Grid.Column="1"
+                               Text="{Binding TargetRaDeg, UpdateSourceTrigger=LostFocus}"
+                               IsEnabled="{Binding IsManualTargetEnabled}"
+                               MinWidth="80" Margin="0,0,14,6"/>
+
+                    <TextBlock Grid.Row="2" Grid.Column="2" Text="Target Dec (deg)" VerticalAlignment="Center" Margin="0,0,8,6"/>
+                    <TextBox   Grid.Row="2" Grid.Column="3"
+                               Text="{Binding TargetDecDeg, UpdateSourceTrigger=LostFocus}"
+                               IsEnabled="{Binding IsManualTargetEnabled}"
+                               MinWidth="80" Margin="0,0,0,6"/>
+
+                    <CheckBox Grid.Row="3" Grid.ColumnSpan="4"
+                              Content="Slew + center (instead of sync-only)"
+                              ToolTip="Slew to target coordinates first, then plate solve and center."
+                              IsChecked="{Binding UseSlewInsteadOfSync, UpdateSourceTrigger=PropertyChanged}"/>
+
+                </Grid>
+
+            </view:SequenceBlockView.SequenceItemContent>
+        </view:SequenceBlockView>
+    </DataTemplate>
+
+</ResourceDictionary>

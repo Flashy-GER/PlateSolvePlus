@@ -1,7 +1,6 @@
 ﻿using NINA.Plugin;
 using NINA.Plugin.Interfaces;
 using NINA.Plugins.PlateSolvePlus.Services;
-using NINA.Plugins.PlateSolvePlus.Utils;
 using NINA.Profile;
 using NINA.Profile.Interfaces;
 using System;
@@ -13,8 +12,8 @@ using System.Windows.Input;
 
 namespace NINA.Plugins.PlateSolvePlus {
 
-    // Cross-container live update (Options UI instance -> Dockable instance)
-    public static class PlateSolvePlusSettingsBus {
+// Cross-container live update (Options UI instance -> Dockable instance)
+public static class PlateSolvePlusSettingsBus {
         public static event EventHandler<PlateSolvePlusSettingChangedEventArgs>? SettingChanged;
 
         public static void Publish(string key, object? value) {

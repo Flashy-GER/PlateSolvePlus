@@ -30,6 +30,8 @@ using System.Windows.Threading;
 namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
     [Export(typeof(NINA.Equipment.Interfaces.ViewModel.IDockableVM))]
+    [Export(typeof(CameraDockable))]
+    [PartCreationPolicy(CreationPolicy.Shared)]
     public sealed class CameraDockable : DockableVM,
         NINA.Equipment.Interfaces.ViewModel.IDockableVM,
         IDisposable,
