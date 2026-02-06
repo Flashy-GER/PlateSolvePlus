@@ -1,4 +1,4 @@
-﻿using NINA.Plugin;
+﻿﻿using NINA.Plugin;
 using NINA.Plugin.Interfaces;
 using NINA.Plugins.PlateSolvePlus.Services;
 using NINA.Profile;
@@ -219,6 +219,10 @@ public static class PlateSolvePlusSettingsBus {
                 case nameof(PlateSolvePlusSettings.ApiToken):
                     Settings.ApiToken = value as string;
                     break;
+
+                case nameof(PlateSolvePlusSettings.AFBlock):
+                    if (value is bool afb) Settings.AFBlock = afb;
+                    break;
             }
         }
 
@@ -303,6 +307,8 @@ public static class PlateSolvePlusSettingsBus {
                 s.ApiToken = options.GetValueString(nameof(PlateSolvePlusSettings.ApiToken), "");
                 if (string.IsNullOrWhiteSpace(s.ApiToken)) s.ApiToken = null;
 
+                // UI toggles
+                s.AFBlock = options.GetValueBoolean(nameof(PlateSolvePlusSettings.AFBlock), false);
 
                 // Offset quaternion
                 s.RotationQw = options.GetValueDouble(nameof(PlateSolvePlusSettings.RotationQw), 1.0);
@@ -406,6 +412,11 @@ public static class PlateSolvePlusSettingsBus {
                     options.SetValueString(propertyName, Settings.ApiToken ?? "");
                     break;
 
+                // UI toggles
+                case nameof(PlateSolvePlusSettings.AFBlock):
+                    options.SetValueBoolean(propertyName, Settings.AFBlock);
+                    break;
+
                 // Offset enabled + arcsec
                 case nameof(PlateSolvePlusSettings.OffsetEnabled):
                     options.SetValueBoolean(propertyName, Settings.OffsetEnabled); break;
@@ -478,6 +489,8 @@ public static class PlateSolvePlusSettingsBus {
                 nameof(PlateSolvePlusSettings.ApiPort) => Settings.ApiPort,
                 nameof(PlateSolvePlusSettings.ApiRequireToken) => Settings.ApiRequireToken,
                 nameof(PlateSolvePlusSettings.ApiToken) => Settings.ApiToken,
+
+                nameof(PlateSolvePlusSettings.AFBlock) => Settings.AFBlock,
 
                 _ => null
             };

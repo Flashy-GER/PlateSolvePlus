@@ -3,10 +3,10 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:diag="clr-namespace:System.Diagnostics;assembly=WindowsBase"
              mc:Ignorable="d"
              d:DesignHeight="900"
              d:DesignWidth="520">
-
 
     <UserControl.Resources>
         <!-- Small status indicator dot (neutral/green/red by triggers) -->
@@ -17,8 +17,22 @@
             <Setter Property="Fill" Value="#999"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
-    </UserControl.Resources>
 
+        <!-- =======================
+         Secondary AF / HelpCard
+         ======================= -->
+        <Style x:Key="HelpCard" TargetType="Border">
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="10"/>
+            <Setter Property="Margin" Value="0,4,0,4"/>
+            <Setter Property="Background"
+                Value="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"/>
+            <Setter Property="BorderBrush"
+                Value="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+
+    </UserControl.Resources>
 
     <Grid Margin="10">
         <Grid.RowDefinitions>
@@ -167,7 +181,76 @@
                                VerticalAlignment="Center"
                                TextWrapping="Wrap"/>
                 </Grid>
+                <!-- =======================
+                     Secondary Autofocus
+                     ======================= -->
+                    <Border CornerRadius="6">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding AFBlock}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                    
+                    <StackPanel>
+                        <TextBlock Text="OAG Camera Autofocus"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   Margin="0,0,0,8"/>
 
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <Button Content="Start"
+                                Width="90"
+                                Margin="0,0,8,0"
+                                Command="{Binding StartSecondaryAutofocusCommand}"
+                                IsEnabled="{Binding CanStartSecondaryAutofocus}" />
+
+                            <Button Content="Cancel"
+                                Width="90"
+                                Command="{Binding CancelSecondaryAutofocusCommand}"
+                                IsEnabled="{Binding IsSecondaryAutofocusRunning}" />
+                            <TextBlock Text="{Binding IsSecondaryConnected, StringFormat=Cam:{0}}" />
+                            <TextBlock>
+                            <TextBlock.Text>
+                                <Binding Path="IsFocuserAvailable"
+                                         StringFormat="Foc:{0}"
+                                         diag:PresentationTraceSources.TraceLevel="High" />
+                              </TextBlock.Text>
+                            </TextBlock>
+                            <TextBlock Text="{Binding IsSecondaryAutofocusRunning, StringFormat=Run:{0}}" />
+                            <TextBlock Text="{Binding CanStartSecondaryAutofocus, StringFormat=CanStart:{0}}" />
+                            <TextBlock Text="{Binding HasAF, StringFormat=HasAF:{0}}" />
+                            <TextBlock Text="{Binding StartCmdCanExec, StringFormat=StartCan:{0}}" />
+
+                        </StackPanel>
+
+                        <ProgressBar Height="10"
+                                     Minimum="0"
+                                     Maximum="1"
+                                     Value="{Binding SecondaryAutofocus.RunState.Progress}"
+                                     Margin="0,0,0,6"/>
+
+                        <TextBlock Text="{Binding SecondaryAutofocus.RunState.Status}"
+                                   TextWrapping="Wrap"
+                                   Margin="0,0,0,6"/>
+
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Best: " FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding SecondaryAutofocus.RunState.BestPosition}"/>
+                            <TextBlock Text="  HFR: " Margin="10,0,0,0" FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding SecondaryAutofocus.RunState.BestHfr, StringFormat=0.00}"/>
+                        </StackPanel>
+
+                        <TextBlock Text="{Binding SecondaryAutofocus.RunState.LastError}"
+                                   Foreground="Tomato"
+                                   TextWrapping="Wrap"
+                                   Margin="0,6,0,0"/>
+                    </StackPanel>
+                </Border>
 
                 <!-- Target (main) for: Slew to Target + Center -->
                 <GroupBox Header="Target (Main, Degrees)" Margin="0,0,0,10">
@@ -255,27 +338,27 @@
                                 <TextBlock Text="Offset" Opacity="0.85"/>
                             </StackPanel>
                         </WrapPanel>
-
-                        <Grid>
+                        <Grid Width="188" HorizontalAlignment="Left">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="40"/>
-                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="27*"/>
+                                <ColumnDefinition Width="121*"/>
                             </Grid.ColumnDefinitions>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
-                            <TextBlock Grid.Row="0" Grid.Column="0" Text="RA°" VerticalAlignment="Center"/>
-                            <TextBox Grid.Row="0" Grid.Column="1"
+                            <TextBlock Grid.Column="0" Text="RA°" VerticalAlignment="Center" Grid.Row="1"/>
+                            <TextBox Grid.Row="1" Grid.Column="1"
                                      IsReadOnly="True"
                                      IsReadOnlyCaretVisible="True"
                                      Focusable="True"
                                      ToolTip="Right ascension in degrees (0..360)"
-                                     Margin="0,0,0,6">
+                                     Margin="0,0,23,6" Grid.ColumnSpan="2">
                                 <TextBox.Style>
-                                    <Style TargetType="TextBox">
-                                        <Setter Property="Text" Value="{Binding TargetRaDeg, Mode=OneWay, StringFormat={}{0:0.000000}}"/>
+                                    <Style TargetType="{x:Type TextBox}">
+                                        <Setter Property="Text" Value="{Binding TargetRaDeg, Mode=OneWay, StringFormat=\{0:0.000000\}}"/>
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding TargetAvailable}" Value="False">
                                                 <Setter Property="Text" Value="–"/>
@@ -285,15 +368,15 @@
                                 </TextBox.Style>
                             </TextBox>
 
-                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Dec°" VerticalAlignment="Center"/>
-                            <TextBox Grid.Row="1" Grid.Column="1"
+                            <TextBlock Grid.Column="0" Text="Dec°" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="1"
                                      IsReadOnly="True"
                                      IsReadOnlyCaretVisible="True"
                                      Focusable="True"
-                                     ToolTip="Declination in degrees (-90..+90)">
+                                     ToolTip="Declination in degrees (-90..+90)" Margin="0,0,23,0" Grid.ColumnSpan="2">
                                 <TextBox.Style>
-                                    <Style TargetType="TextBox">
-                                        <Setter Property="Text" Value="{Binding TargetDecDeg, Mode=OneWay, StringFormat={}{0:0.000000}}"/>
+                                    <Style TargetType="{x:Type TextBox}">
+                                        <Setter Property="Text" Value="{Binding TargetDecDeg, Mode=OneWay, StringFormat=\{0:0.000000\}}"/>
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding TargetAvailable}" Value="False">
                                                 <Setter Property="Text" Value="–"/>
@@ -321,7 +404,7 @@
                                     Command="{Binding SlewToTargetAndCenterCommand}"
                                     IsEnabled="{Binding CanSlewToTargetAndCenter}"
                                     ToolTip="Slew to the target and then center using the secondary camera and offset mapping."
-                                    Margin="0,10,0,0"/>
+                                    Margin="0,10,0,0" HorizontalAlignment="Left"/>
                         </StackPanel>
 
                     </StackPanel>
@@ -355,7 +438,7 @@
             <ScrollViewer Grid.Column="0"
                           VerticalScrollBarVisibility="Auto"
                           HorizontalScrollBarVisibility="Disabled"
-                          Margin="0,0,10,0">
+                          Margin="10,0,0,0">
                 <StackPanel>
 
                     <GroupBox Header="Results" Margin="0,0,0,10">

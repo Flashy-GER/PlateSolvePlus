@@ -1,5 +1,5 @@
 ﻿using NINA.Core.Utility;
-using NINA.Plugins.PlateSolvePlus.Properties;
+using NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Models;
 using NINA.Plugins.PlateSolvePlus.Services;
 using System;
 
@@ -296,7 +296,129 @@ namespace NINA.Plugins.PlateSolvePlus {
             set { if (string.Equals(apiToken, value, StringComparison.Ordinal)) return; apiToken = value; RaisePropertyChanged(nameof(ApiToken)); }
         }
 
-    
+        // =========================
+        // Autofocus settings
+        // =========================
+        private bool afBlock = false;
+        //
+        // Controls whether the Autofocus block (AFBlock) is shown in the Camera dockable UI.
+        //
+        public bool AFBlock {
+            get => afBlock;
+            set {
+                if (afBlock == value) return;
+                afBlock = value;
+                RaisePropertyChanged();
+            }
+        }
+        public SecondaryAutofocusSettings SecondaryAutofocus { get; set; }
+            = new SecondaryAutofocusSettings();
+
+        public sealed class SecondaryAutofocusSettings : BaseINPC {
+
+            private double exposureSeconds = 2.0;
+            public double ExposureSeconds {
+                get => exposureSeconds;
+                set {
+                    if (Math.Abs(exposureSeconds - value) < 1e-6) return;
+                    exposureSeconds = value; RaisePropertyChanged();
+                }
+            }
+
+            private int gain = 0;
+            public int Gain {
+                get => gain;
+                set { if (gain == value) return; gain = value; RaisePropertyChanged(); }
+            }
+
+            private int binX = 1;
+            public int BinX {
+                get => binX;
+                set { if (binX == value) return; binX = value; RaisePropertyChanged(); }
+            }
+
+            private int binY = 1;
+            public int BinY {
+                get => binY;
+                set { if (binY == value) return; binY = value; RaisePropertyChanged(); }
+            }
+
+            private int stepSize = 40;
+            public int StepSize {
+                get => stepSize;
+                set { if (stepSize == value) return; stepSize = value; RaisePropertyChanged(); }
+            }
+
+            private int stepsOut = 4;
+            public int StepsOut {
+                get => stepsOut;
+                set { if (stepsOut == value) return; stepsOut = value; RaisePropertyChanged(); }
+            }
+
+            private int stepsIn = 4;
+            public int StepsIn {
+                get => stepsIn;
+                set { if (stepsIn == value) return; stepsIn = value; RaisePropertyChanged(); }
+            }
+
+            private int settleTimeMs = 400;
+            public int SettleTimeMs {
+                get => settleTimeMs;
+                set { if (settleTimeMs == value) return; settleTimeMs = value; RaisePropertyChanged(); }
+            }
+
+            private int backlashSteps = 0;
+            public int BacklashSteps {
+                get => backlashSteps;
+                set { if (backlashSteps == value) return; backlashSteps = value; RaisePropertyChanged(); }
+            }
+
+            private BacklashMode backlashMode = BacklashMode.OvershootReturn;
+            public BacklashMode BacklashMode {
+                get => backlashMode;
+                set { if (backlashMode == value) return; backlashMode = value; RaisePropertyChanged(); }
+            }
+
+            private int minStars = 10;
+            public int MinStars {
+                get => minStars;
+                set { if (minStars == value) return; minStars = value; RaisePropertyChanged(); }
+            }
+
+            private int maxStars = 250;
+            public int MaxStars {
+                get => maxStars;
+                set { if (maxStars == value) return; maxStars = value; RaisePropertyChanged(); }
+            }
+
+            private int timeoutSeconds = 180;
+            public int TimeoutSeconds {
+                get => timeoutSeconds;
+                set { if (timeoutSeconds == value) return; timeoutSeconds = value; RaisePropertyChanged(); }
+            }
+            public void ApplyFrom(SecondaryAutofocusSettings other) {
+                if (other == null) return;
+
+                ExposureSeconds = other.ExposureSeconds;
+                Gain = other.Gain;
+                BinX = other.BinX;
+                BinY = other.BinY;
+
+                StepSize = other.StepSize;
+                StepsOut = other.StepsOut;
+                StepsIn = other.StepsIn;
+
+                SettleTimeMs = other.SettleTimeMs;
+
+                MinStars = other.MinStars;
+                MaxStars = other.MaxStars;
+                TimeoutSeconds = other.TimeoutSeconds;
+
+                BacklashSteps = other.BacklashSteps;
+                BacklashMode = other.BacklashMode;
+            }
+        }
+
         // =========================
         // Derived / UI helpers
         // =========================

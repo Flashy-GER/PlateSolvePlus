@@ -1,8 +1,8 @@
 <ResourceDictionary
     x:Class="NINA.Plugins.PlateSolvePlus.Options"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="clr-namespace:NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Models">
     <ResourceDictionary.MergedDictionaries>
         <ResourceDictionary Source="Converters/Converters.xaml"/>
     </ResourceDictionary.MergedDictionaries>
@@ -265,6 +265,7 @@
 
                         </StackPanel>
                     </GroupBox>
+
                 </StackPanel>
 
                 <!-- =======================
@@ -328,6 +329,85 @@
                             </TextBlock>
                         </StackPanel>
                     </Border>
+                    <GroupBox Header="OAG Autofocus" Margin="0,10,0,0">
+                        <StackPanel>
+                        <CheckBox Content="Show AF block in Camera UI"
+                                      Margin="0,0,0,10"
+                                      ToolTip="Shows/hides the Autofocus (AFBlock) section in the Camera dockable."
+                                      IsChecked="{Binding Settings.AFBlock, UpdateSourceTrigger=PropertyChanged}"/>
+
+                            <TextBlock Text="Capture" FontWeight="SemiBold" Margin="0,0,0,6"/>
+
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Exposure (s)" Width="150"/>
+                                <TextBox Width="80"
+                                         Text="{Binding Settings.SecondaryAutofocus.ExposureSeconds,
+                                                        UpdateSourceTrigger=PropertyChanged}"/>
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Gain" Width="150"/>
+                                <TextBox Width="80"
+                                         Text="{Binding Settings.SecondaryAutofocus.Gain,
+                                                        UpdateSourceTrigger=PropertyChanged}"/>
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Bin X / Y" Width="150"/>
+                                <TextBox Width="38" Margin="0,0,6,0"
+                                         Text="{Binding Settings.SecondaryAutofocus.BinX,
+                                                        UpdateSourceTrigger=PropertyChanged}"/>
+                                <TextBox Width="38"
+                                         Text="{Binding Settings.SecondaryAutofocus.BinY,
+                                                        UpdateSourceTrigger=PropertyChanged}"/>
+                            </StackPanel>
+
+                            <Separator Margin="0,8,0,8"/>
+
+                            <TextBlock Text="Focus sweep" FontWeight="SemiBold" Margin="0,0,0,6"/>
+
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Step size" Width="150"/>
+                                <TextBox Width="80"
+                                         Text="{Binding Settings.SecondaryAutofocus.StepSize,
+                                                        UpdateSourceTrigger=PropertyChanged}"/>
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Steps out / in" Width="150"/>
+                                <TextBox Width="38" Margin="0,0,6,0"
+                                         Text="{Binding Settings.SecondaryAutofocus.StepsOut,
+                                                        UpdateSourceTrigger=PropertyChanged}"/>
+                                <TextBox Width="38"
+                                         Text="{Binding Settings.SecondaryAutofocus.StepsIn,
+                                                        UpdateSourceTrigger=PropertyChanged}"/>
+                            </StackPanel>
+
+                            <Separator Margin="0,8,0,8"/>
+
+                            <TextBlock Text="Backlash" FontWeight="SemiBold" Margin="0,0,0,6"/>
+
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Backlash steps" Width="150"/>
+                                <TextBox Width="80"
+                                         Text="{Binding Settings.SecondaryAutofocus.BacklashSteps,
+                                                        UpdateSourceTrigger=PropertyChanged}"/>
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Mode" Width="150"/>
+                            <ComboBox Width="200"
+                                      SelectedValue="{Binding Settings.SecondaryAutofocus.BacklashMode,
+                                                              UpdateSourceTrigger=PropertyChanged}"
+                                      SelectedValuePath="Tag">
+                                <ComboBoxItem Content="None" Tag="{x:Static local:BacklashMode.None}"/>
+                                <ComboBoxItem Content="Overshoot + Return" Tag="{x:Static local:BacklashMode.OvershootReturn}"/>
+                                <ComboBoxItem Content="One-way approach" Tag="{x:Static local:BacklashMode.OneWayApproach}"/>
+                            </ComboBox>
+                            </StackPanel>
+
+                        </StackPanel>
+                    </GroupBox>
 
                 </StackPanel>
 

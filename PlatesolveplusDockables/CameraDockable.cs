@@ -6,6 +6,10 @@ using NINA.Image.Interfaces;
 using NINA.PlateSolving.Interfaces;
 using NINA.Plugins.PlateSolvePlus.Models;
 using NINA.Plugins.PlateSolvePlus.PlateSolving;
+using NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services;
+using NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.State;
+using NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.ViewModels;
+using NINA.Plugins.PlateSolvePlus.SecondaryCamera;
 using NINA.Plugins.PlateSolvePlus.Services;
 using NINA.Plugins.PlateSolvePlus.Services.Api;
 using NINA.Plugins.PlateSolvePlus.Utils;
@@ -50,6 +54,12 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         [Import(AllowDefault = true)]
         public ITelescopeMediator? TelescopeMediator { get; set; }
 
+        [Import(AllowDefault = true)]
+        public IFocuserMediator? FocuserMediator { get; set; }
+
+        [Import(AllowDefault = true)]
+        internal IFocuserReferenceService? FocuserRef { get; set; }
+
         // Preferred, robust telescope coordinate access used for connection state & RA/Dec
         [Import(AllowDefault = true)]
         internal ITelescopeReferenceService? TelescopeReferenceService { get; set; }
@@ -69,6 +79,51 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         private bool pluginSettingsHooked;
         private bool busHooked;
         private bool telescopeReferenceHooked;
+        private bool focuserReferenceHooked;
+
+        // ===== Secondary Autofocus (OAG Camera) =====
+        public bool AFBlock => PluginSettings?.Settings?.AFBlock ?? false;
+
+        public SecondaryAutofocusViewModel? SecondaryAutofocus { get; private set; }
+
+        public bool IsSecondaryAutofocusAvailable => SecondaryAutofocus != null;
+
+        public bool CanCancelSecondaryAutofocus {
+            get {
+                try {
+                    return SecondaryAutofocus != null && SecondaryAutofocus.CancelCommand?.CanExecute(null) == true;
+                } catch { return false; }
+            }
+        }
+        public bool IsFocuserAvailable =>
+            (FocuserRef?.IsConnected == true);
+
+        public bool IsSecondaryAutofocusRunning =>
+            SecondaryAutofocus?.RunState?.Phase is
+                SecondaryAfPhase.Preparing or
+                SecondaryAfPhase.Moving or
+                SecondaryAfPhase.Settling or
+                SecondaryAfPhase.Capturing or
+                SecondaryAfPhase.Measuring or
+                SecondaryAfPhase.Fitting or
+                SecondaryAfPhase.MovingToBest;
+
+        public bool CanStartSecondaryAutofocus =>
+            IsSecondaryConnected
+            && IsFocuserAvailable
+            && !IsSecondaryAutofocusRunning;
+
+
+
+        private bool secondaryAutofocusInitialized;
+        private readonly object secondaryAutofocusStatusLock = new();
+        private SecondaryAutofocusStatusDto? secondaryAutofocusStatus;
+
+        private void PluginSettings_SettingsOnPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) {
+            if (e.PropertyName == nameof(PlateSolvePlusSettings.AFBlock)) {
+                RaisePropertyChanged(nameof(AFBlock));
+            }
+        }
 
         // WEB API Variablen
         private PlateSolvePlusApiHost? apiHost;
@@ -102,6 +157,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 RaisePropertyChanged(nameof(SelectedSecondaryCamera));
                 SelectedSecondaryCameraProgId = selectedSecondaryCamera?.ProgId;
                 _ = EnsureSecondaryCameraService();
+                ResetSecondaryAutofocus();
                 UpdateConnectionStateFromService();
             }
         }
@@ -121,6 +177,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 Context.CurrentSecondaryCameraProgId = progId;
                 // refresh cached service instance so subsequent calls use the same object
                 _ = EnsureSecondaryCameraService();
+                ResetSecondaryAutofocus();
 
                 UpdateConnectionStateFromService();
             }
@@ -142,10 +199,248 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             // driver changed → dispose old instance (should be disconnected already)
             try { secondaryCameraServiceCached?.Dispose(); } catch { }
 
-            secondaryCameraServiceCached = new SecondaryCameraService(desired);
+            if (AlpacaDiscovery.TryParseAlpacaProgId(desired, out var ip, out var port, out var devNum)) {
+                secondaryCameraServiceCached = new AlpacaSecondaryCameraService(desired, ip, port, devNum);
+            } else {
+                secondaryCameraServiceCached = new SecondaryCameraService(desired);
+            }
             secondaryCameraProgIdCached = desired;
 
             return secondaryCameraServiceCached;
+        }
+        /// <summary>
+        /// Minimal ISecondaryCameraService implementation backed by Alpaca (HTTP) using AlpacaSecondaryCamera.
+        /// Supports the subset used by CameraDockable (Connect/Disconnect/Capture/OpenSetupDialog).
+        /// </summary>
+        private sealed class AlpacaSecondaryCameraService : ISecondaryCameraService {
+            private readonly string _progId;
+            private readonly AlpacaSecondaryCamera _camera;
+
+            public string ProgId => _progId;
+            public bool IsConnected => _camera.IsConnected;
+
+            public AlpacaSecondaryCameraService(string progId, string ip, int port, int deviceNumber) {
+                _progId = progId;
+                _camera = new AlpacaSecondaryCamera(ip, port, deviceNumber);
+            }
+
+            public async Task ConnectAsync(CancellationToken ct) {
+                await _camera.ConnectAsync(ct).ConfigureAwait(false);
+            }
+
+            public async Task DisconnectAsync(CancellationToken ct) {
+                await _camera.DisconnectAsync(ct).ConfigureAwait(false);
+            }
+
+            public async Task<CapturedFrame> CaptureAsync(double exposureSeconds, int binX, int binY, int? gain, CancellationToken ct) {
+                var frame = await _camera.CaptureAsync(exposureSeconds, binX, binY, gain, ct).ConfigureAwait(false);
+                // Alpaca imagearray is typically delivered as already-debayered or mono depending on camera; treat as non-bayered by default.
+                return new CapturedFrame(frame.Width, frame.Height, frame.BitDepth, frame.Pixels, isBayered: false);
+            }
+
+            public Task<bool> OpenSetupDialogAsync() {
+                // Alpaca devices are configured on the server side; no local COM setup dialog exists.
+                return Task.FromResult(false);
+            }
+
+            public void Dispose() {
+                _camera.Dispose();
+            }
+        }
+
+        // ============================================================
+        // Secondary Autofocus Composition Root
+
+        private void ResetSecondaryAutofocus() {
+            // Re-create AF composition so it always uses the currently selected secondary camera service (ASCOM or Alpaca).
+            try {
+                SecondaryAutofocus?.CancelCommand?.Execute(null);
+            } catch { /* ignore */ }
+
+            lock (secondaryAutofocusStatusLock) {
+                secondaryAutofocusStatus = null;
+            }
+
+            SecondaryAutofocus = null;
+            secondaryAutofocusInitialized = false;
+            RaisePropertyChanged(nameof(SecondaryAutofocus));
+            RaisePropertyChanged(nameof(IsSecondaryAutofocusAvailable));
+            RaisePropertyChanged(nameof(CanStartSecondaryAutofocus));
+            RaisePropertyChanged(nameof(CanCancelSecondaryAutofocus));
+        }
+
+        private Task StartSecondaryAutofocusAsync() {
+
+            // HARD PRECONDITIONS – do not even create/run AF if not available
+            if (!IsSecondaryConnected) {
+                StatusText = "Secondary camera not connected.";
+                return Task.CompletedTask;
+            }
+
+            // Use your REAL focuser connection flag here if you have one.
+            // FocuserMediator != null is not always equal to "connected".
+            if (!IsFocuserAvailable) {
+                StatusText = "Focuser not connected.";
+                return Task.CompletedTask;
+            }
+
+            EnsureSecondaryAutofocus();
+            if (SecondaryAutofocus == null) {
+                StatusText = "Autofocus not available.";
+                return Task.CompletedTask;
+            }
+
+            RaisePropertyChanged(nameof(IsSecondaryAutofocusAvailable));
+            RaisePropertyChanged(nameof(CanStartSecondaryAutofocus));
+            RaisePropertyChanged(nameof(CanCancelSecondaryAutofocus));
+
+            if (SecondaryAutofocus == null) {
+                StatusText = "Secondary Autofocus not available (not initialized).";
+                return Task.CompletedTask;
+            }
+
+            try {
+                // If the XAML binds directly to SecondaryAutofocus.StartCommand, this Execute() path is still useful
+                // for users who bind to StartSecondaryAutofocusCommand (compat).
+                if (SecondaryAutofocus.StartCommand?.CanExecute(null) == true) {
+                    SecondaryAutofocus.StartCommand.Execute(null);
+                } else {
+                    // Give immediate feedback instead of silently doing nothing
+                    StatusText = SecondaryAutofocus.RunState?.LastError ?? "Secondary Autofocus cannot start (CanExecute = false).";
+                }
+            } catch (Exception ex) {
+                StatusText = $"Secondary Autofocus start failed: {ex.Message}";
+            }
+
+            return Task.CompletedTask;
+        }
+
+        private void CancelSecondaryAutofocus() {
+            try {
+                SecondaryAutofocus?.CancelCommand?.Execute(null);
+            } catch { }
+
+            RaisePropertyChanged(nameof(CanCancelSecondaryAutofocus));
+        }
+
+        private void EnsureSecondaryAutofocus() {
+            if (disposed) return;
+
+            if (!IsSecondaryConnected) {
+                ResetSecondaryAutofocus();
+                StatusText = "Secondary camera not connected. Connect camera first.";
+                return;
+            }
+
+            if (!IsSecondaryConnected || !IsFocuserAvailable)
+                return;
+
+            if (!importsReady) {
+                ResetSecondaryAutofocus();
+                StatusText = "Secondary Autofocus unavailable: MEF imports not ready yet.";
+                return;
+            }
+
+            // Already initialized
+            if (SecondaryAutofocus != null)
+                return;
+
+            try {
+                var capture = new SecondaryCameraCaptureAdapter(SecondaryCameraService);
+                var metric = new BasicHfrMetricService();
+                var fit = new QuadraticCurveFitService();
+                var focus = new NinaFocuserMotorService(FocuserMediator);
+
+                var publisher = new DockableSecondaryAfStatusPublisher(this);
+
+                var dispatcherReal = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
+
+                var afService = new SecondaryAutofocusService(
+                    capture,
+                    metric,
+                    focus,
+                    fit,
+                    publisher,
+                    dispatcherReal,
+                    focuserMediator: FocuserMediator
+                );
+
+                SecondaryAutofocus = new SecondaryAutofocusViewModel(
+                    afService,
+                    beforeRun: () => {
+                        // Ensure AF uses the currently selected secondary camera service
+                        EnsureSecondaryCameraService();
+
+                        var settings = PluginSettings?.Settings;
+                        if (settings?.SecondaryAutofocus != null) {
+                            SecondaryAutofocus.Settings.ApplyFrom(settings.SecondaryAutofocus);
+                        }
+
+                        SetActionActiveSafe(true);
+                    }
+                );
+
+                // initial sync
+                var initial = PluginSettings?.Settings;
+                if (initial?.SecondaryAutofocus != null) {
+                    SecondaryAutofocus.Settings.ApplyFrom(initial.SecondaryAutofocus);
+                }
+
+                secondaryAutofocusInitialized = true;                
+                RaisePropertyChanged(nameof(SecondaryAutofocus));
+                RaisePropertyChanged(nameof(IsSecondaryAutofocusAvailable));
+                RaisePropertyChanged(nameof(CanStartSecondaryAutofocus));
+                RaisePropertyChanged(nameof(CanCancelSecondaryAutofocus));
+
+            } catch (Exception ex) {
+                // keep it retryable
+                secondaryAutofocusInitialized = false;                
+                ResetSecondaryAutofocus();
+                StatusText = $"Secondary AF init failed: {ex.Message}";
+                Logger.Error($"[PlateSolvePlus] Secondary AF init failed: {ex}");
+            }
+        }
+
+        private sealed class DockableSecondaryAfStatusPublisher : ISecondaryAfStatusPublisher {
+            private readonly CameraDockable _owner;
+
+            public DockableSecondaryAfStatusPublisher(CameraDockable owner) {
+                _owner = owner;
+            }
+
+            public void Publish(SecondaryAutofocusRunState state) {
+                try {
+                    var dto = new SecondaryAutofocusStatusDto {
+                        Phase = state.Phase.ToString(),
+                        Progress = state.Progress,
+                        Status = state.Status,
+                        CurrentPosition = state.CurrentPosition,
+                        CurrentHfr = state.CurrentHfr,
+                        CurrentStars = state.CurrentStars,
+                        BestPosition = state.BestPosition,
+                        BestHfr = state.BestHfr,
+                        LastError = state.LastError
+                    };
+
+                    lock (_owner.secondaryAutofocusStatusLock) {
+                        _owner.secondaryAutofocusStatus = dto;
+                    }
+                } catch {
+                    // never throw from status publish path
+                }
+            }
+        }
+
+        private sealed class SecondaryAutofocusStatusDto {
+            public string Phase { get; set; } = string.Empty;
+            public double Progress { get; set; }
+            public string Status { get; set; } = string.Empty;
+            public int CurrentPosition { get; set; }
+            public double CurrentHfr { get; set; }
+            public int CurrentStars { get; set; }
+            public int BestPosition { get; set; }
+            public double BestHfr { get; set; }
+            public string? LastError { get; set; }
         }
 
         // ============================================================
@@ -485,6 +780,10 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         public ICommand ConnectSecondaryCommand { get; }
         public ICommand DisconnectSecondaryCommand { get; }
 
+        // Secondary Autofocus (UI-safe commands)
+        public ICommand StartSecondaryAutofocusCommand { get; }
+        public ICommand CancelSecondaryAutofocusCommand { get; }
+
         // NEW: Capture-only (sets offset if not present)
         public ICommand CaptureOnlyCommand { get; }
 
@@ -716,6 +1015,9 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             ConnectSecondaryCommand = new SimpleAsyncCommand(ConnectSecondaryAsync);
             DisconnectSecondaryCommand = new SimpleAsyncCommand(DisconnectSecondaryAsync);
 
+            StartSecondaryAutofocusCommand = new SimpleAsyncCommand(StartSecondaryAutofocusAsync);
+            CancelSecondaryAutofocusCommand = new RelayCommand(_ => CancelSecondaryAutofocus(), _ => CanCancelSecondaryAutofocus);
+
             //Command Definitions
             CaptureOnlyCommand = new SimpleAsyncCommand(CaptureOnlyAsync);
 
@@ -732,7 +1034,8 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
         public void OnImportsSatisfied() {
             importsReady = true;
-
+            WireFocuserReferenceService();
+            Logger.Info($"[PlateSolvePlus] OnImportsSatisfied: FocuserRef={(FocuserRef != null)} FocuserMediator={(FocuserMediator != null)} focuserReferenceHooked={focuserReferenceHooked}");
             try {
                 var initialProgId = !string.IsNullOrWhiteSpace(Context.CurrentSecondaryCameraProgId)
                     ? Context.CurrentSecondaryCameraProgId!
@@ -745,20 +1048,20 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
                 StatusText = "Ready";
                 RefreshSecondaryCameraList();
-                HookPluginSettings();
                 HookSettingsBus();
+                HookPluginSettings();
 
                 // Hook framing assistant target tracking
                 WireFramingAssistantTargetTracking();
-
                 WireTelescopeReferenceService();
-
+    
                 StartMountPoll();
                 UpdateMountConnectionState();
 
                 ApplySettings(ReadSettingsFromPluginInstance(), force: true);
                 UpdateMountConnectionState();
                 UpdateConnectionStateFromService();
+                RaisePropertyChanged(nameof(AFBlock));
 
                 // ---- API state init (one time) ----
                 var s = PluginSettings?.Settings;
@@ -779,6 +1082,18 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             }
         }
 
+        private void OnFocuserReferenceUpdated(object? sender, EventArgs e) {
+
+            if (IsSecondaryConnected && IsFocuserAvailable) {
+                EnsureSecondaryAutofocus();
+            }
+
+            RaisePropertyChanged(nameof(CanStartSecondaryAutofocus));
+            RaisePropertyChanged(nameof(IsFocuserAvailable));
+            RaisePropertyChanged(nameof(CanStartSecondaryAutofocus));
+            RaisePropertyChanged(nameof(IsSecondaryConnected));
+        }
+
         public void Dispose() {
             if (disposed) return;
             disposed = true;
@@ -793,6 +1108,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
             UnwireFramingAssistantTargetTracking();
             UnwireTelescopeReferenceService();
+            UnwireFocuserReferenceService();
             StopMountPoll();
 
             if (profileService != null) {
@@ -812,21 +1128,24 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             }
 
             UpdateMountConnectionState();
+
+            // In case the focuser becomes available after a profile switch
+            if (SecondaryAutofocus == null) {
+                secondaryAutofocusInitialized = false;
+                EnsureSecondaryAutofocus();
+            }
         }
 
         private void HookPluginSettings() {
             if (pluginSettingsHooked) return;
-            if (PluginSettings == null) return;
+            if (PluginSettings?.Settings == null) return;
 
-            PluginSettings.PropertyChanged += PluginSettings_PropertyChanged;
-
-            // Änderungen aus Options.xaml passieren auf Settings
-            if (PluginSettings.Settings != null) {
-                PluginSettings.Settings.PropertyChanged += Settings_PropertyChanged;
-            }
+            PluginSettings.Settings.PropertyChanged -= PluginSettings_SettingsOnPropertyChanged;
+            PluginSettings.Settings.PropertyChanged += PluginSettings_SettingsOnPropertyChanged;
 
             pluginSettingsHooked = true;
         }
+
 
         private void UnhookPluginSettings() {
             if (!pluginSettingsHooked) return;
@@ -864,8 +1183,64 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 TelescopeReferenceService.ReferenceUpdated += TelescopeReferenceService_ReferenceUpdated;
                 telescopeReferenceHooked = true;
             }
-
             UpdateMountConnectionState();
+        }
+
+        private void WireFocuserReferenceService() {
+            Logger.Info($"[PlateSolvePlus] WireFocuserReferenceService ENTER: FocuserRef={(FocuserRef != null)} FocuserMediator={(FocuserMediator != null)} hooked={focuserReferenceHooked}");
+
+            if (FocuserRef == null) return;
+
+            // Ensure mediator is assigned so service can RegisterConsumer(...)
+            FocuserRef.FocuserMediator = FocuserMediator;
+
+            // IMPORTANT: Always (re)attach handler exactly once
+            try {
+                FocuserRef.ReferenceUpdated -= FocuserReferenceService_ReferenceUpdated;
+            } catch { /* ignore */ }
+
+            FocuserRef.ReferenceUpdated += FocuserReferenceService_ReferenceUpdated;
+
+            focuserReferenceHooked = true;
+
+            Logger.Info($"[PlateSolvePlus] WireFocuserReferenceService DONE: hooked={focuserReferenceHooked} IsConnected={FocuserRef.IsConnected}");
+
+            // initial UI sync
+            FocuserReferenceService_ReferenceUpdated(this, EventArgs.Empty);
+        }
+
+        private bool lastFocConnected;
+        private void FocuserReferenceService_ReferenceUpdated(object? sender, EventArgs e) {
+            var now = FocuserRef?.IsConnected == true;
+            if (now != lastFocConnected) {
+                lastFocConnected = now;
+                Logger.Info($"[PlateSolvePlus] Focuser connected changed -> {now}");
+            }
+            var disp = System.Windows.Application.Current?.Dispatcher;
+            if (disp != null && !disp.CheckAccess()) {
+                disp.BeginInvoke(new Action(() => FocuserReferenceService_ReferenceUpdated(sender, e)));
+                return;
+            }
+
+            RaisePropertyChanged(nameof(IsFocuserAvailable));
+            RaisePropertyChanged(nameof(CanStartSecondaryAutofocus));
+            RaisePropertyChanged(nameof(CanCancelSecondaryAutofocus));
+
+                // If focuser comes online, attempt to (re)build autofocus VM
+                EnsureSecondaryAutofocus();
+        }
+
+        private void UnwireFocuserReferenceService() {
+            if (!focuserReferenceHooked) return;
+
+            try {
+                if (FocuserRef != null) {
+                    FocuserRef.ReferenceUpdated -= FocuserReferenceService_ReferenceUpdated;
+                    FocuserRef.FocuserMediator = null;
+                }
+            } catch { }
+
+            focuserReferenceHooked = false;
         }
 
         private void UnwireTelescopeReferenceService() {
@@ -880,7 +1255,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
             telescopeReferenceHooked = false;
         }
-
         private void TelescopeReferenceService_ReferenceUpdated(object? sender, TelescopeReferenceUpdatedEventArgs e) {
             try {
                 if (Application.Current?.Dispatcher != null && !Application.Current.Dispatcher.CheckAccess()) {
@@ -1147,7 +1521,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         }
 
         // ============================
-        // Your requested workflow
+        // Capture + Solve Actions
         // ============================
 
         private async Task CaptureOnlyAsync() {
@@ -1596,27 +1970,51 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 DetailsText = "MEF imports are not satisfied yet.";
                 return;
             }
-            RefreshSecondaryCameraList();
+            _ = RefreshSecondaryCameraListAsync();
         }
 
-        private void RefreshSecondaryCameraList() {
-            SecondaryCameraDevices.Clear();
+        private async Task RefreshSecondaryCameraListAsync() {
+            try {
+                // Run discoveries off the UI thread
+                var ascomTask = Task.Run(() => AscomDiscovery.GetCameras());
+                var alpacaTask = AlpacaDiscovery.GetCamerasAsync(udpTimeout: TimeSpan.FromMilliseconds(900), ct: CancellationToken.None);
 
-            var cams = AscomDiscovery.GetCameras();
-            foreach (var c in cams) SecondaryCameraDevices.Add(c);
+                var ascomCams = await ascomTask.ConfigureAwait(false);
+                var alpacaCams = await alpacaTask.ConfigureAwait(false);
 
-            if (SecondaryCameraDevices.Count == 0) {
-                SecondaryCameraDevices.Add(new AscomDeviceInfo("ASCOM Simulator Camera (fallback)", FallbackSecondaryCameraProgId));
-                DetailsText = "No ASCOM cameras found.\n" + (AscomDiscovery.GetLastError() ?? "n/a");
-            } else {
-                DetailsText = $"Found {SecondaryCameraDevices.Count} ASCOM cameras.";
+                await Application.Current.Dispatcher.InvokeAsync(() => {
+                    SecondaryCameraDevices.Clear();
+
+                    foreach (var c in ascomCams) SecondaryCameraDevices.Add(c);
+                    foreach (var c in alpacaCams) SecondaryCameraDevices.Add(c);
+
+                    if (SecondaryCameraDevices.Count == 0) {
+                        SecondaryCameraDevices.Add(new AscomDeviceInfo("ASCOM Simulator Camera (fallback)", FallbackSecondaryCameraProgId));
+                        DetailsText =
+                            "No ASCOM/Alpaca cameras found." +
+                            "ASCOM: " + (AscomDiscovery.GetLastError() ?? "n/a") + "" +
+                            "Alpaca: " + (AlpacaDiscovery.GetLastError() ?? "n/a");
+                    } else {
+                        DetailsText = $"Found {ascomCams.Count} ASCOM + {alpacaCams.Count} Alpaca cameras. Total: {SecondaryCameraDevices.Count}.";
+                    }
+
+                    var desired = SelectedSecondaryCameraProgId ?? FallbackSecondaryCameraProgId;
+                    var match = SecondaryCameraDevices.FirstOrDefault(x =>
+                        string.Equals(x.ProgId, desired, StringComparison.OrdinalIgnoreCase));
+
+                    SelectedSecondaryCamera = match ?? SecondaryCameraDevices.FirstOrDefault();
+                });
+            } catch (Exception ex) {
+                // last resort: keep UI responsive and show error
+                await Application.Current.Dispatcher.InvokeAsync(() => {
+                    DetailsText = "Secondary camera discovery failed." + ex;
+                });
             }
+        }
 
-            var desired = SelectedSecondaryCameraProgId ?? FallbackSecondaryCameraProgId;
-            var match = SecondaryCameraDevices.FirstOrDefault(x =>
-                string.Equals(x.ProgId, desired, StringComparison.OrdinalIgnoreCase));
-
-            SelectedSecondaryCamera = match ?? SecondaryCameraDevices.FirstOrDefault();
+        // Backwards-compatible wrapper (existing calls)
+        private void RefreshSecondaryCameraList() {
+            _ = RefreshSecondaryCameraListAsync();
         }
 
         private async Task OpenDriverSettingsAsync() {
@@ -2363,6 +2761,11 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         }
 
         internal object GetApiStatusObject() {
+            SecondaryAutofocusStatusDto? af;
+            lock (secondaryAutofocusStatusLock) {
+                af = secondaryAutofocusStatus;
+            }
+
             return new {
                 importsReady = importsReady,
                 busy = apiBusy,
@@ -2379,6 +2782,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 lastSolveSummary = LastSolveSummary,
                 lastGuiderSolveText = LastGuiderSolveText,
                 correctedSolveText = CorrectedSolveText,
+                secondaryAutofocus = af,
                 targetRaDeg = TargetRaDeg,
                 targetDecDeg = TargetDecDeg
             };
@@ -2446,6 +2850,17 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             }
 
             Logger.Info("[PlateSolvePlus] EnsureApiHostState -> already running (maybe restart check)");
+        }
+        private void DumpFocuserState(string tag) {
+            try {
+                Logger.Info($"[PlateSolvePlus] {tag} " +
+                            $"FocuserRef={(FocuserRef != null ? FocuserRef.GetType().FullName : "null")} " +
+                            $"FocuserMediator={(FocuserMediator != null ? FocuserMediator.GetType().FullName : "null")} " +
+                            $"Ref.IsConnected={FocuserRef?.IsConnected} " +
+                            $"Ref.MediatorSet={(FocuserRef?.FocuserMediator != null)}");
+            } catch (Exception ex) {
+                Logger.Warning($"[PlateSolvePlus] DumpFocuserState failed: {ex.Message}");
+            }
         }
 
 #if DEBUG
