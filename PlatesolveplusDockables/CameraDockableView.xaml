@@ -212,19 +212,7 @@
                             <Button Content="Cancel"
                                 Width="90"
                                 Command="{Binding CancelSecondaryAutofocusCommand}"
-                                IsEnabled="{Binding IsSecondaryAutofocusRunning}" />
-                            <TextBlock Text="{Binding IsSecondaryConnected, StringFormat=Cam:{0}}" />
-                            <TextBlock>
-                            <TextBlock.Text>
-                                <Binding Path="IsFocuserAvailable"
-                                         StringFormat="Foc:{0}"
-                                         diag:PresentationTraceSources.TraceLevel="High" />
-                              </TextBlock.Text>
-                            </TextBlock>
-                            <TextBlock Text="{Binding IsSecondaryAutofocusRunning, StringFormat=Run:{0}}" />
-                            <TextBlock Text="{Binding CanStartSecondaryAutofocus, StringFormat=CanStart:{0}}" />
-                            <TextBlock Text="{Binding HasAF, StringFormat=HasAF:{0}}" />
-                            <TextBlock Text="{Binding StartCmdCanExec, StringFormat=StartCan:{0}}" />
+                                IsEnabled="{Binding CanCancelSecondaryAutofocus}" />
 
                         </StackPanel>
 

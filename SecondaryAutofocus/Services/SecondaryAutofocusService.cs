@@ -1,4 +1,5 @@
-﻿using NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Models;
+﻿﻿using NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Models;
+using NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Plot;
 using NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.State;
 using System;
 using System.Collections.Generic;
@@ -8,7 +9,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Threading;
 
-
 namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
     public sealed class SecondaryAutofocusService : ISecondaryAutofocusService {
         private readonly ISecondaryCameraCaptureService _capture;
@@ -16,6 +16,7 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
         private readonly IFocusMotorService _focus;
         private readonly ICurveFitService _fit;
         private readonly ISecondaryAfStatusPublisher _publisher;
+        private readonly ISecondaryAutofocusPlotSink? _plot;
 
         // Publish pipeline can be re-entrant (Publish -> subscriber updates state -> Publish ...),
         // which can cause stack exhaustion ("stack guard page" crash). We therefore coalesce
@@ -35,30 +36,30 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
             ICurveFitService fit,
             ISecondaryAfStatusPublisher publisher,
             Dispatcher? uiDispatcher = null,
-            Equipment.Interfaces.Mediator.IFocuserMediator focuserMediator = null) {
+            Equipment.Interfaces.Mediator.IFocuserMediator focuserMediator = null,
+            ISecondaryAutofocusPlotSink? plotSink = null) {
             _capture = capture;
             _metric = metric;
             _focus = focus;
             _fit = fit;
             _publisher = publisher ?? NullSecondaryAfStatusPublisher.Instance;
             _uiDispatcher = uiDispatcher;
+            _plot = plotSink;
         }
 
         public void Cancel() {
             try { _internalCts?.Cancel(); } catch { }
         }
 
-		public async Task<SecondaryAutofocusResult> RunAsync(
-			SecondaryAutofocusSettings settings,
-			SecondaryAutofocusRunState state,
-			CancellationToken ct)
-		{
-			// === HARD GUARDS ===
-			if (_focus == null)
-			{
-				state.Phase = SecondaryAfPhase.Failed;
-				state.StatusText = "Focuser not connected.";
-				Push(state);
+        public async Task<SecondaryAutofocusResult> RunAsync(
+            SecondaryAutofocusSettings settings,
+            SecondaryAutofocusRunState state,
+            CancellationToken ct) {
+            // === HARD GUARDS ===
+            if (_focus == null) {
+                state.Phase = SecondaryAfPhase.Failed;
+                state.StatusText = "Focuser not connected.";
+                Push(state);
                 return new SecondaryAutofocusResult {
                     Success = false,
                     Cancelled = false,
@@ -68,14 +69,12 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
                     BestHfr = state.BestHfr,
                     Samples = state.Samples?.ToList() ?? new List<FocusSample>()
                 };
-
             }
 
-            if (_capture == null)
-			{
-				state.Phase = SecondaryAfPhase.Failed;
-				state.StatusText = "Camera not connected.";
-				Push(state);
+            if (_capture == null) {
+                state.Phase = SecondaryAfPhase.Failed;
+                state.StatusText = "Camera not connected.";
+                Push(state);
                 return new SecondaryAutofocusResult {
                     Success = false,
                     Cancelled = false,
@@ -85,199 +84,199 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
                     BestHfr = state.BestHfr,
                     Samples = state.Samples?.ToList() ?? new List<FocusSample>()
                 };
-
             }
 
             System.Diagnostics.Debug.WriteLine("### PSP AF: RunAsync ENTERED ###");
 
-			await _runLock.WaitAsync(ct).ConfigureAwait(false);
-			_internalCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            await _runLock.WaitAsync(ct).ConfigureAwait(false);
+            _internalCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
 
-			try
-			{
-				var lct = _internalCts.Token;
-                // Guards
-                if (_focus == null) { /* set Failed + Push + return */ }
-                if (_capture == null) { /* set Failed + Push + return */ }
+            try {
+                var lct = _internalCts.Token;
 
                 // Erst ab hier "running"/"preparing"
                 Update(state, SecondaryAfPhase.Preparing, "Preparing…", 0);
-
                 state.StatusText = "Autofocus running...";
-				state.Progress = 0;
-				Push(state);
+                state.Progress = 0;
+                Push(state);
 
-				Update(state, SecondaryAfPhase.Preparing, "Preparing…", 0);
+                int startPos = state.CurrentPosition > 0
+                    ? state.CurrentPosition
+                    : await WithCancel(_focus.GetPositionAsync(lct), lct).ConfigureAwait(false);
 
-				int startPos = await WithCancel(_focus.GetPositionAsync(lct), lct).ConfigureAwait(false);
+                var positions = BuildPositions(startPos, settings);
+                if (positions.Count < 5)
+                    throw new InvalidOperationException("Zu wenige Fokus-Positionen. StepsOut/StepsIn/StepSize prüfen.");
 
-				var positions = BuildPositions(startPos, settings);
-				if (positions.Count < 5)
-					throw new InvalidOperationException("Zu wenige Fokus-Positionen. StepsOut/StepsIn/StepSize prüfen.");
+                // Apply optional bounds
+                if (settings.MinFocuserPosition < settings.MaxFocuserPosition) {
+                    positions = positions
+                        .Where(p => p >= settings.MinFocuserPosition && p <= settings.MaxFocuserPosition)
+                        .ToList();
+                }
 
-				// Apply optional bounds
-				if (settings.MinFocuserPosition < settings.MaxFocuserPosition)
-				{
-					positions = positions
-						.Where(p => p >= settings.MinFocuserPosition && p <= settings.MaxFocuserPosition)
-						.ToList();
-				}
+                double bestHfr = double.PositiveInfinity;
+                int bestPos = startPos;
 
-				double bestHfr = double.PositiveInfinity;
-				int bestPos = startPos;
+                var samples = new List<FocusSample>(positions.Count);
+                int total = positions.Count;
 
-				var samples = new List<FocusSample>(positions.Count);
-				int total = positions.Count;
+                // --- OPEN PLOT POPUP (new run) ---
+                _plot?.StartNewRun(total);
 
-				for (int i = 0; i < total; i++)
-				{
-					lct.ThrowIfCancellationRequested();
-					int pos = positions[i];
+                for (int i = 0; i < total; i++) {
+                    lct.ThrowIfCancellationRequested();
+                    int pos = positions[i];
 
-					Update(state, SecondaryAfPhase.Moving, $"Moving to {pos}", (double)i / total);
-					await WithCancel(MoveWithBacklashAsync(pos, settings, lct), lct).ConfigureAwait(false);
+                    Update(state, SecondaryAfPhase.Moving, $"Moving to {pos}", (double)i / total);
+                    _plot?.SetPhase($"Step {i + 1}/{total} – moving to {pos} …");
+                    await WithCancel(MoveWithBacklashAsync(pos, settings, lct), lct).ConfigureAwait(false);
 
-					Update(state, SecondaryAfPhase.Settling, $"Settling ({settings.SettleTimeMs}ms)", (double)i / total);
-					await _focus.SettleAsync(settings.SettleTimeMs, lct).ConfigureAwait(false);
+                    Update(state, SecondaryAfPhase.Settling, $"Settling ({settings.SettleTimeMs}ms)", (double)i / total);
+                    _plot?.SetPhase($"Step {i + 1}/{total} – settling …");
+                    await _focus.SettleAsync(settings.SettleTimeMs, lct).ConfigureAwait(false);
 
-					Update(state, SecondaryAfPhase.Capturing, $"Capturing {settings.ExposureSeconds:0.0}s", (double)i / total);
-					var frame = await WithCancel(
-						_capture.CaptureAsync(
-							new SecondaryCaptureRequest(settings.ExposureSeconds, settings.BinX, settings.BinY, settings.Gain),
-							lct),
-						lct).ConfigureAwait(false);
+                    Update(state, SecondaryAfPhase.Capturing, $"Capturing {settings.ExposureSeconds:0.0}s", (double)i / total);
+                    _plot?.SetPhase($"Step {i + 1}/{total} – capturing {settings.ExposureSeconds:0.0}s …");
+                    var frame = await WithCancel(
+                        _capture.CaptureAsync(
+                            new SecondaryCaptureRequest(settings.ExposureSeconds, settings.BinX, settings.BinY, settings.Gain),
+                            lct),
+                        lct).ConfigureAwait(false);
 
-					Update(state, SecondaryAfPhase.Measuring, "Measuring stars (HFR)…", (double)i / total);
-					var metric = await WithCancel(_metric.MeasureAsync(frame, settings, lct), lct).ConfigureAwait(false);
+                    Update(state, SecondaryAfPhase.Measuring, "Measuring stars (HFR)…", (double)i / total);
+                    _plot?.SetPhase($"Step {i + 1}/{total} – measuring HFR …");
+                    var metric = await WithCancel(_metric.MeasureAsync(frame, settings, lct), lct).ConfigureAwait(false);
 
-					var ts = DateTime.UtcNow;
-					var sample = new FocusSample(
-						pos,
-						metric.Hfr,
-						metric.StarCount,
-						ts,
-						double.IsNaN(metric.Hfr) ? "HFR=NaN (too few stars?)" : null);
+                    var ts = DateTime.UtcNow;
+                    var sample = new FocusSample(
+                        pos,
+                        metric.Hfr,
+                        metric.StarCount,
+                        ts,
+                        double.IsNaN(metric.Hfr) ? "HFR=NaN (too few stars?)" : null);
 
-					samples.Add(sample);
-					await AddSampleAsync(state, sample).ConfigureAwait(false);
+                    samples.Add(sample);
+                    await AddSampleAsync(state, sample).ConfigureAwait(false);
 
-					state.CurrentPosition = pos;
-					state.CurrentHfr = metric.Hfr;
-					state.CurrentStars = metric.StarCount;
+                    state.CurrentPosition = pos;
+                    state.CurrentHfr = metric.Hfr;
+                    state.CurrentStars = metric.StarCount;
 
-					if (!double.IsNaN(metric.Hfr) && metric.StarCount >= settings.MinStars && metric.Hfr < bestHfr)
-					{
-						bestHfr = metric.Hfr;
-						bestPos = pos;
-						state.BestHfr = bestHfr;
-						state.BestPosition = bestPos;
-					}
+                    if (!double.IsNaN(metric.Hfr) && metric.StarCount >= settings.MinStars && metric.Hfr < bestHfr) {
+                        bestHfr = metric.Hfr;
+                        bestPos = pos;
+                        state.BestHfr = bestHfr;
+                        state.BestPosition = bestPos;
+                    }
 
-					state.Progress = (double)(i + 1) / total;
-					Push(state);
-				}
+                    state.Progress = (double)(i + 1) / total;
+                    Push(state);
 
-				// Fit curve
-				Update(state, SecondaryAfPhase.Fitting, "Fitting curve…", 0.95);
+                    // --- live plot point + best marker + status line ---
+                    _plot?.AddSample(sample, i + 1, total, state.BestPosition, state.BestHfr);
+                }
+
+                // Fit curve
+                Update(state, SecondaryAfPhase.Fitting, "Fitting curve…", 0.95);
+                _plot?.SetPhase("Fitting curve…");
 
                 CurveFitResult? fitResult = null;
-                try
-				{
+                try {
                     fitResult = ((dynamic)_fit).Fit(samples);
+                } catch {
+                    ((dynamic)_fit).Fit(samples);
                 }
-				catch
-				{
-					((dynamic)_fit).Fit(samples);
-				}
 
-				int minPos = positions.Min();
-				int maxPos = positions.Max();
+                int minPos = positions.Min();
+                int maxPos = positions.Max();
 
-				int bestFromFit;
-				try
-				{
+                int bestFromFit;
+                try {
                     bestFromFit = ((dynamic)_fit).GetBestPosition(fitResult, fallbackBest: bestPos, minPos: minPos, maxPos: maxPos);
+                } catch {
+                    try {
+                        bestFromFit = ((dynamic)_fit).GetBestPosition(fallbackBest: bestPos, minPos: minPos, maxPos: maxPos);
+                    } catch {
+                        bestFromFit = bestPos;
+                    }
                 }
-				catch
-				{
-					try
-					{
-						bestFromFit = ((dynamic)_fit).GetBestPosition(fallbackBest: bestPos, minPos: minPos, maxPos: maxPos);
-					}
-					catch
-					{
-						bestFromFit = bestPos;
-					}
-				}
 
-				// Move to best
-				Update(state, SecondaryAfPhase.MovingToBest, $"Moving to best ({bestFromFit})", 0.98);
-				await WithCancel(MoveWithBacklashAsync(bestFromFit, settings, lct), lct).ConfigureAwait(false);
-				await _focus.SettleAsync(settings.SettleTimeMs, lct).ConfigureAwait(false);
+                // Optional: estimate HFR at bestFromFit (simple: take nearest measured or vertex eval isn't exposed)
+                double bestFromFitHfr = samples
+                    .Where(s => !double.IsNaN(s.Hfr))
+                    .OrderBy(s => Math.Abs(s.Position - bestFromFit))
+                    .Select(s => s.Hfr)
+                    .FirstOrDefault(double.NaN);
 
-				Update(state, SecondaryAfPhase.Completed, "Autofocus complete", 1.0);
+                _plot?.SetFitBest(bestFromFit, bestFromFitHfr);
 
-				// Final state
-				state.Phase = SecondaryAfPhase.Completed;
-				state.StatusText = "Autofocus completed";
-				state.Progress = 1.0;
-				Push(state);
+                // Move to best
+                Update(state, SecondaryAfPhase.MovingToBest, $"Moving to best ({bestFromFit})", 0.98);
+                _plot?.SetPhase($"Moving to best ({bestFromFit}) …");
+                await WithCancel(MoveWithBacklashAsync(bestFromFit, settings, lct), lct).ConfigureAwait(false);
+                await _focus.SettleAsync(settings.SettleTimeMs, lct).ConfigureAwait(false);
 
-				return new SecondaryAutofocusResult
-				{
-					Success = true,
-					Cancelled = false,
-					StartPosition = startPos,
-					BestPosition = bestFromFit,
-					BestHfr = double.IsFinite(bestHfr)
-						? bestHfr
-						: samples.Where(s => !double.IsNaN(s.Hfr)).Select(s => s.Hfr).DefaultIfEmpty(double.NaN).Min(),
-					Samples = samples,
+                Update(state, SecondaryAfPhase.Completed, "Autofocus complete", 1.0);
+                _plot?.SetPhase("Autofocus complete (window stays open)");
+
+                // Final state
+                state.Phase = SecondaryAfPhase.Completed;
+                state.StatusText = "Autofocus completed";
+                state.Progress = 1.0;
+                Push(state);
+
+                return new SecondaryAutofocusResult {
+                    Success = true,
+                    Cancelled = false,
+                    StartPosition = startPos,
+                    BestPosition = bestFromFit,
+                    BestHfr = double.IsFinite(bestHfr)
+                        ? bestHfr
+                        : samples.Where(s => !double.IsNaN(s.Hfr)).Select(s => s.Hfr).DefaultIfEmpty(double.NaN).Min(),
+                    Samples = samples,
                     Fit = fitResult
                 };
-			}
-			catch (OperationCanceledException)
-			{
-				state.Phase = SecondaryAfPhase.Cancelled;
-				state.StatusText = "Autofocus cancelled";
-				Push(state);
+            }
+            catch (OperationCanceledException) {
+                state.Phase = SecondaryAfPhase.Cancelled;
+                state.StatusText = "Autofocus cancelled";
+                Push(state);
+                _plot?.SetPhase("Autofocus cancelled (window stays open)");
 
-				return new SecondaryAutofocusResult
-				{
-					Success = false,
-					Cancelled = true,
-					Error = "Cancelled",
-					StartPosition = state.CurrentPosition,
-					BestPosition = state.BestPosition,
-					BestHfr = state.BestHfr,
-					Samples = state.Samples?.ToList() ?? new List<FocusSample>()
-				};
-			}
-			catch (Exception ex)
-			{
-				state.Phase = SecondaryAfPhase.Failed;
-				state.StatusText = "Autofocus failed";
-				state.LastError = ex.Message;
-				Push(state);
+                return new SecondaryAutofocusResult {
+                    Success = false,
+                    Cancelled = true,
+                    Error = "Cancelled",
+                    StartPosition = state.CurrentPosition,
+                    BestPosition = state.BestPosition,
+                    BestHfr = state.BestHfr,
+                    Samples = state.Samples?.ToList() ?? new List<FocusSample>()
+                };
+            }
+            catch (Exception ex) {
+                state.Phase = SecondaryAfPhase.Failed;
+                state.StatusText = "Autofocus failed";
+                state.LastError = ex.Message;
+                Push(state);
+                _plot?.SetPhase($"Autofocus failed: {ex.Message}");
 
-				return new SecondaryAutofocusResult
-				{
-					Success = false,
-					Cancelled = false,
-					Error = ex.Message,
-					StartPosition = state.CurrentPosition,
-					BestPosition = state.BestPosition,
-					BestHfr = state.BestHfr,
-					Samples = state.Samples?.ToList() ?? new List<FocusSample>()
-				};
-			}
-			finally
-			{
-				_internalCts?.Dispose();
-				_internalCts = null;
-				_runLock.Release();
-			}
-		}
+                return new SecondaryAutofocusResult {
+                    Success = false,
+                    Cancelled = false,
+                    Error = ex.Message,
+                    StartPosition = state.CurrentPosition,
+                    BestPosition = state.BestPosition,
+                    BestHfr = state.BestHfr,
+                    Samples = state.Samples?.ToList() ?? new List<FocusSample>()
+                };
+            }
+            finally {
+                _internalCts?.Dispose();
+                _internalCts = null;
+                _runLock.Release();
+            }
+        }
 
         private static List<int> BuildPositions(int startPos, SecondaryAutofocusSettings s) {
             // Classic NINA-ish: sample from outside -> through -> inside (monotonic)
@@ -369,7 +368,7 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
                 _ = Task.Run((Action)PublishLoop);
             }
         }
-     
+
         private Task AddSampleAsync(SecondaryAutofocusRunState state, FocusSample sample) {
             // If WPF UI binds to ObservableCollection, add on UI thread.
             // IMPORTANT: Use BeginInvoke (fire-and-forget) to avoid Dispatcher re-entrancy / deep call stacks.
@@ -386,7 +385,6 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
 
             return Task.CompletedTask;
         }
-
 
         public async Task RunAsync(PlateSolvePlusSettings.SecondaryAutofocusSettings settings, SecondaryAutofocusRunState runState, CancellationToken token) {
             if (settings == null) throw new ArgumentNullException(nameof(settings));
@@ -449,6 +447,7 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
 
             return dst;
         }
+
         private static async Task<T> WithCancel<T>(Task<T> task, CancellationToken ct) {
             var cancelTask = Task.Delay(Timeout.InfiniteTimeSpan, ct);
             var done = await Task.WhenAny(task, cancelTask).ConfigureAwait(false);
@@ -462,6 +461,5 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
             ct.ThrowIfCancellationRequested();
             await task.ConfigureAwait(false);
         }
-
     }
 }

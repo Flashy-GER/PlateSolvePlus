@@ -7,6 +7,7 @@ namespace NINA.Plugins.PlateSolvePlus.Services {
 
         bool TryGetPosition(out int position);
         bool CanMoveAbsolute { get; }
+        int Position { get; }
         bool IsConnected { get; }
 
         event EventHandler? ReferenceUpdated;

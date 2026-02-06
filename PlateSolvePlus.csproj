@@ -62,6 +62,10 @@
     <Folder Include="Docu\Pics\" />
     <Folder Include="PlatesolveplusSequenceItems\Templates\" />
   </ItemGroup>
+	
+    <ItemGroup>
+		<PackageReference Include="OxyPlot.Wpf" Version="2.2.0" />
+	</ItemGroup>
 
 	<Target Name="PostBuild" AfterTargets="Build">
 		<PropertyGroup>

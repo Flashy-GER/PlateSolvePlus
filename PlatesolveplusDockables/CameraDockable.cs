@@ -6,6 +6,7 @@ using NINA.Image.Interfaces;
 using NINA.PlateSolving.Interfaces;
 using NINA.Plugins.PlateSolvePlus.Models;
 using NINA.Plugins.PlateSolvePlus.PlateSolving;
+using NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Plot;
 using NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services;
 using NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.State;
 using NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.ViewModels;
@@ -350,10 +351,9 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 var metric = new BasicHfrMetricService();
                 var fit = new QuadraticCurveFitService();
                 var focus = new NinaFocuserMotorService(FocuserMediator);
-
                 var publisher = new DockableSecondaryAfStatusPublisher(this);
-
                 var dispatcherReal = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
+                var plotSink = new WpfOxySecondaryAutofocusPlotSink(dispatcherReal);
 
                 var afService = new SecondaryAutofocusService(
                     capture,
@@ -362,7 +362,8 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                     fit,
                     publisher,
                     dispatcherReal,
-                    focuserMediator: FocuserMediator
+                    focuserMediator: FocuserMediator,
+                    plotSink: plotSink
                 );
 
                 SecondaryAutofocus = new SecondaryAutofocusViewModel(
@@ -374,6 +375,10 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                         var settings = PluginSettings?.Settings;
                         if (settings?.SecondaryAutofocus != null) {
                             SecondaryAutofocus.Settings.ApplyFrom(settings.SecondaryAutofocus);
+                        }
+                        // Startposition aus der Referenz nehmen
+                        if (FocuserRef?.TryGetPosition(out var p) == true) {
+                            SecondaryAutofocus.RunState.CurrentPosition = p;
                         }
 
                         SetActionActiveSafe(true);
@@ -398,8 +403,50 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 ResetSecondaryAutofocus();
                 StatusText = $"Secondary AF init failed: {ex.Message}";
                 Logger.Error($"[PlateSolvePlus] Secondary AF init failed: {ex}");
-            }
+
+            } 
         }
+
+        private void ApplySecondaryAutofocusState(SecondaryAutofocusRunState state) {
+            // Running Phases (gleich wie deine IsSecondaryAutofocusRunning-Logik)
+            var running =
+                state.Phase is
+                    SecondaryAfPhase.Preparing or
+                    SecondaryAfPhase.Moving or
+                    SecondaryAfPhase.Settling or
+                    SecondaryAfPhase.Capturing or
+                    SecondaryAfPhase.Measuring or
+                    SecondaryAfPhase.Fitting or
+                    SecondaryAfPhase.MovingToBest;
+
+            // Action busy flag sauber setzen (du setzt true in beforeRun, aber hier wird es auch wieder zurückgesetzt)
+            SetActionActiveSafe(running);
+
+            // StatusText sinnvoll updaten (statt dauerhaft "Action running..")
+            if (running) {
+                // während des Runs: live Status aus dem AF
+                if (!string.IsNullOrWhiteSpace(state.Status)) {
+                    StatusText = state.Status;
+                }
+            } else {
+                // nach Ende: finaler Text
+                StatusText = state.Phase switch {
+                    SecondaryAfPhase.Completed => "Autofocus complete",
+                    SecondaryAfPhase.Cancelled => "Autofocus cancelled",
+                    SecondaryAfPhase.Failed => string.IsNullOrWhiteSpace(state.LastError) ? "Autofocus failed" : $"Autofocus failed: {state.LastError}",
+                    _ => "Ready"
+                };
+            }
+
+            // WICHTIG: UI-Bindings/Buttons neu auswerten
+            RaisePropertyChanged(nameof(IsSecondaryAutofocusRunning));
+            RaisePropertyChanged(nameof(CanStartSecondaryAutofocus));
+            RaisePropertyChanged(nameof(CanCancelSecondaryAutofocus));
+            RaisePropertyChanged(nameof(IsSecondaryAutofocusAvailable));
+            RaisePropertyChanged(nameof(CanCancelSecondaryAutofocus));
+
+        }
+
 
         private sealed class DockableSecondaryAfStatusPublisher : ISecondaryAfStatusPublisher {
             private readonly CameraDockable _owner;
@@ -425,6 +472,13 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                     lock (_owner.secondaryAutofocusStatusLock) {
                         _owner.secondaryAutofocusStatus = dto;
                     }
+                    var disp = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
+                    if (disp != null && !disp.CheckAccess()) {
+                        disp.BeginInvoke((Action)(() => _owner.ApplySecondaryAutofocusState(state)));
+                    } else {
+                        _owner.ApplySecondaryAutofocusState(state);
+                    }
+
                 } catch {
                     // never throw from status publish path
                 }
@@ -2850,17 +2904,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             }
 
             Logger.Info("[PlateSolvePlus] EnsureApiHostState -> already running (maybe restart check)");
-        }
-        private void DumpFocuserState(string tag) {
-            try {
-                Logger.Info($"[PlateSolvePlus] {tag} " +
-                            $"FocuserRef={(FocuserRef != null ? FocuserRef.GetType().FullName : "null")} " +
-                            $"FocuserMediator={(FocuserMediator != null ? FocuserMediator.GetType().FullName : "null")} " +
-                            $"Ref.IsConnected={FocuserRef?.IsConnected} " +
-                            $"Ref.MediatorSet={(FocuserRef?.FocuserMediator != null)}");
-            } catch (Exception ex) {
-                Logger.Warning($"[PlateSolvePlus] DumpFocuserState failed: {ex.Message}");
-            }
         }
 
 #if DEBUG

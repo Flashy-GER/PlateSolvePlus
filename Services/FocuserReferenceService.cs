@@ -16,9 +16,7 @@ namespace NINA.Plugins.PlateSolvePlus.Services {
 
         private IFocuserMediator? _mediator;
         private FocuserInfo _last = new FocuserInfo();
-
         public event EventHandler? ReferenceUpdated;
-
         public IFocuserMediator? FocuserMediator {
             get => _mediator;
             set {
@@ -45,9 +43,9 @@ namespace NINA.Plugins.PlateSolvePlus.Services {
                 ReferenceUpdated?.Invoke(this, EventArgs.Empty);
             }
         }
-
-        public bool IsConnected => _last?.Connected == true;
-
+        public int Position { get; private set; }
+        public bool IsConnected { get; private set; }
+        public int LastPosition => _last?.Position ?? 0;
         public bool CanMoveAbsolute {
             get {
                 // If your interface requires this flag, keep it simple:
@@ -57,11 +55,8 @@ namespace NINA.Plugins.PlateSolvePlus.Services {
         }
 
         public bool TryGetPosition(out int position) {
-            position = 0;
-            if (!IsConnected) return false;
-
-            position = _last.Position;
-            return true;
+            position = _last?.Position ?? 0;
+            return (_last?.Connected ?? false) && position > 0;
         }
 
         // =========================
@@ -73,6 +68,8 @@ namespace NINA.Plugins.PlateSolvePlus.Services {
             _last = info ?? new FocuserInfo();
             Logger.Info($"[PlateSolvePlus] UpdateDeviceInfo received: this={GetHashCode()} Connected={_last.Connected} Pos={_last.Position}");
             ReferenceUpdated?.Invoke(this, EventArgs.Empty);
+            Position = _last.Position;
+            IsConnected = _last.Connected;
         }
 
         // These are required because FocuserMediator calls them on consumers (see your pasted source).
