@@ -113,6 +113,7 @@ jobs:
             -createArchive `
             -includeAll `
             -appendVersionToArchive
+            -beta
 
           # Normalize output names so release assets are predictable
           $zip = Get-ChildItem -Filter "*.zip" | Select-Object -First 1
