@@ -7,8 +7,8 @@ using System.Runtime.InteropServices;
 
 // [MANDATORY] The assembly versioning
 //Should be incremented for each new release build of a plugin
-[assembly: AssemblyVersion("1.0.0.4")]
-[assembly: AssemblyFileVersion("1.0.0.4")]
+[assembly: AssemblyVersion("1.0.1.1")]
+[assembly: AssemblyFileVersion("1.0.1.1")]
 
 // [MANDATORY] The name of your plugin
 [assembly: AssemblyTitle("PlateSolvePlus")]
@@ -51,7 +51,7 @@ using System.Runtime.InteropServices;
 //[Optional] An additional url to an example example screenshot of your plugin in action
 [assembly: AssemblyMetadata("AltScreenshotURL", "")]
 //[Optional] An in-depth description of your plugin
-[assembly: AssemblyMetadata("LongDescription", @"Notes for 1.0.0.4: new: Center and Slew to Target is possible. Target coordinates from Framing assistant.")]
+[assembly: AssemblyMetadata("LongDescription", @"Beta Release 1.0.1.1: new: add Sequencer Trigger, instructions. add Autofocus for OAG (use main focuser with OAG camera for ex.")]
 
 // Setting ComVisible to false makes the types in this assembly not visible
 // to COM components.  If you need to access a type in this assembly from
