@@ -1,4 +1,5 @@
-﻿using System;
+﻿using NINA.Plugins.PlateSolvePlus.Services;
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -10,19 +11,16 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
     /// Erwartet CapturedFrame: Width, Height, BitDepth, Pixels (int[] oder int[,])
     /// </summary>
     public sealed class SecondaryCameraCaptureAdapter : ISecondaryCameraCaptureService {
-        private readonly object _secondaryCameraService;
+        private readonly ISecondaryCameraService _secondaryCameraService;
 
-        public SecondaryCameraCaptureAdapter(object secondaryCameraService) {
+        public SecondaryCameraCaptureAdapter(ISecondaryCameraService secondaryCameraService) {
             _secondaryCameraService = secondaryCameraService ?? throw new ArgumentNullException(nameof(secondaryCameraService));
         }
 
         public async Task<SecondaryFrame> CaptureAsync(SecondaryCaptureRequest request, CancellationToken ct) {
             ct.ThrowIfCancellationRequested();
 
-            // Dynamic call to your method:
-            // Task<CapturedFrame> CaptureAsync(double exposureSeconds,int binX,int binY,int? gain,CancellationToken ct)
-            dynamic svc = _secondaryCameraService;
-            dynamic captured = await svc.CaptureAsync(
+            var captured = await _secondaryCameraService.CaptureAsync(
                 request.ExposureSeconds,
                 request.BinX,
                 request.BinY,
@@ -30,16 +28,10 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
                 ct
             ).ConfigureAwait(false);
 
-            int width = (int)captured.Width;
-            int height = (int)captured.Height;
-            int bitDepth = (int)captured.BitDepth;
-
-            object pxObj = captured.Pixels;
-            int[] pixels = pxObj switch {
-                int[] arr => arr,
-                int[,] grid => Flatten(grid),
-                _ => throw new InvalidOperationException("CapturedFrame.Pixels must be int[] or int[,].")
-            };
+            int width = captured.Width;
+            int height = captured.Height;
+            int bitDepth = captured.BitDepth;
+            int[] pixels = Flatten(captured.Pixels);
 
             if (pixels.Length != width * height)
                 throw new InvalidOperationException($"CapturedFrame pixel length mismatch: {pixels.Length} != {width}*{height}");

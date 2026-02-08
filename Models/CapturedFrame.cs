@@ -6,7 +6,7 @@ namespace NINA.Plugins.PlateSolvePlus.Models {
     /// <summary>
     /// Minimal DTO to decouple Dockables from concrete capture result types.
     /// </summary>
-    internal sealed class CapturedFrame {
+    public sealed class CapturedFrame {
         public int Width { get; }
         public int Height { get; }
         public int BitDepth { get; }
@@ -24,7 +24,7 @@ namespace NINA.Plugins.PlateSolvePlus.Models {
         }
 
     }
-    internal enum BayerPattern {
+    public enum BayerPattern {
         RGGB
     }
 }

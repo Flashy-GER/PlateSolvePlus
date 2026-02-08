@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace NINA.Plugins.PlateSolvePlus.Services {
 
-    internal interface ISecondaryCameraService : IDisposable {
+    public interface ISecondaryCameraService : IDisposable {
         string ProgId { get; }
         bool IsConnected { get; }
 
