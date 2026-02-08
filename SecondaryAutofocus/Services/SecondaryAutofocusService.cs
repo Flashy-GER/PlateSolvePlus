@@ -3,8 +3,10 @@ using NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Plot;
 using NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.State;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Threading;
@@ -17,6 +19,7 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
         private readonly ICurveFitService _fit;
         private readonly ISecondaryAfStatusPublisher _publisher;
         private readonly ISecondaryAutofocusPlotSink? _plot;
+        private readonly Equipment.Interfaces.Mediator.IFocuserMediator? _focuserMediator;
 
         // Publish pipeline can be re-entrant (Publish -> subscriber updates state -> Publish ...),
         // which can cause stack exhaustion ("stack guard page" crash). We therefore coalesce
@@ -27,6 +30,7 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
 
         private readonly SemaphoreSlim _runLock = new(1, 1);
         private CancellationTokenSource? _internalCts;
+        private string? _disconnectReason;
         private CurveFitResult fit;
 
         public SecondaryAutofocusService(
@@ -45,6 +49,7 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
             _publisher = publisher ?? NullSecondaryAfStatusPublisher.Instance;
             _uiDispatcher = uiDispatcher;
             _plot = plotSink;
+            _focuserMediator = focuserMediator;
         }
 
         public void Cancel() {
@@ -90,9 +95,14 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
 
             await _runLock.WaitAsync(ct).ConfigureAwait(false);
             _internalCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            _disconnectReason = null;
+            var connectionSubscriptions = new List<IDisposable>();
+            var autofocusCompleted = false;
 
             try {
                 var lct = _internalCts.Token;
+                SubscribeConnectionMonitoring(connectionSubscriptions);
+                EnsureDevicesReady();
 
                 // Erst ab hier "running"/"preparing"
                 Update(state, SecondaryAfPhase.Preparing, "Preparing…", 0);
@@ -138,10 +148,13 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
 
                     Update(state, SecondaryAfPhase.Capturing, $"Capturing {settings.ExposureSeconds:0.0}s", (double)i / total);
                     _plot?.SetPhase($"Step {i + 1}/{total} – capturing {settings.ExposureSeconds:0.0}s …");
+                    EnsureDevicesReady();
                     var frame = await WithCancel(
-                        _capture.CaptureAsync(
-                            new SecondaryCaptureRequest(settings.ExposureSeconds, settings.BinX, settings.BinY, settings.Gain),
-                            lct),
+                        ExecuteDeviceCallAsync(
+                            () => _capture.CaptureAsync(
+                                new SecondaryCaptureRequest(settings.ExposureSeconds, settings.BinX, settings.BinY, settings.Gain),
+                                lct),
+                            "Camera"),
                         lct).ConfigureAwait(false);
 
                     Update(state, SecondaryAfPhase.Measuring, "Measuring stars (HFR)…", (double)i / total);
@@ -226,7 +239,7 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
                 state.Progress = 1.0;
                 Push(state);
 
-                return new SecondaryAutofocusResult {
+                var result = new SecondaryAutofocusResult {
                     Success = true,
                     Cancelled = false,
                     StartPosition = startPos,
@@ -237,31 +250,18 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
                     Samples = samples,
                     Fit = fitResult
                 };
+                autofocusCompleted = true;
+                return result;
             }
-            catch (OperationCanceledException) {
-                state.Phase = SecondaryAfPhase.Cancelled;
-                state.StatusText = "Autofocus cancelled";
-                Push(state);
-                _plot?.SetPhase("Autofocus cancelled (window stays open)");
-
-                return new SecondaryAutofocusResult {
-                    Success = false,
-                    Cancelled = true,
-                    Error = "Cancelled",
-                    StartPosition = state.CurrentPosition,
-                    BestPosition = state.BestPosition,
-                    BestHfr = state.BestHfr,
-                    Samples = state.Samples?.ToList() ?? new List<FocusSample>()
-                };
-            }
-            catch (Exception ex) {
+            catch (DeviceDisconnectedException ex) {
                 state.Phase = SecondaryAfPhase.Failed;
                 state.StatusText = "Autofocus failed";
+                state.Status = "Autofocus failed";
                 state.LastError = ex.Message;
                 Push(state);
                 _plot?.SetPhase($"Autofocus failed: {ex.Message}");
 
-                return new SecondaryAutofocusResult {
+                var result = new SecondaryAutofocusResult {
                     Success = false,
                     Cancelled = false,
                     Error = ex.Message,
@@ -270,8 +270,85 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
                     BestHfr = state.BestHfr,
                     Samples = state.Samples?.ToList() ?? new List<FocusSample>()
                 };
+                autofocusCompleted = true;
+                return result;
+            }
+            catch (OperationCanceledException) {
+                if (!string.IsNullOrWhiteSpace(_disconnectReason)) {
+                    state.Phase = SecondaryAfPhase.Failed;
+                    state.StatusText = "Autofocus failed";
+                    state.Status = "Autofocus failed";
+                    state.LastError = _disconnectReason;
+                    Push(state);
+                    _plot?.SetPhase($"Autofocus failed: {_disconnectReason}");
+
+                    var result = new SecondaryAutofocusResult {
+                        Success = false,
+                        Cancelled = false,
+                        Error = _disconnectReason,
+                        StartPosition = state.CurrentPosition,
+                        BestPosition = state.BestPosition,
+                        BestHfr = state.BestHfr,
+                        Samples = state.Samples?.ToList() ?? new List<FocusSample>()
+                    };
+                    autofocusCompleted = true;
+                    return result;
+                }
+
+                state.Phase = SecondaryAfPhase.Cancelled;
+                state.StatusText = "Autofocus cancelled";
+                state.Status = "Autofocus cancelled";
+                Push(state);
+                _plot?.SetPhase("Autofocus cancelled (window stays open)");
+
+                var cancelResult = new SecondaryAutofocusResult {
+                    Success = false,
+                    Cancelled = true,
+                    Error = "Cancelled",
+                    StartPosition = state.CurrentPosition,
+                    BestPosition = state.BestPosition,
+                    BestHfr = state.BestHfr,
+                    Samples = state.Samples?.ToList() ?? new List<FocusSample>()
+                };
+                autofocusCompleted = true;
+                return cancelResult;
+            }
+            catch (Exception ex) {
+                state.Phase = SecondaryAfPhase.Failed;
+                state.StatusText = "Autofocus failed";
+                state.Status = "Autofocus failed";
+                state.LastError = ex.Message;
+                Push(state);
+                _plot?.SetPhase($"Autofocus failed: {ex.Message}");
+
+                var errorResult = new SecondaryAutofocusResult {
+                    Success = false,
+                    Cancelled = false,
+                    Error = ex.Message,
+                    StartPosition = state.CurrentPosition,
+                    BestPosition = state.BestPosition,
+                    BestHfr = state.BestHfr,
+                    Samples = state.Samples?.ToList() ?? new List<FocusSample>()
+                };
+                autofocusCompleted = true;
+                return errorResult;
             }
             finally {
+                foreach (var subscription in connectionSubscriptions) {
+                    subscription.Dispose();
+                }
+                connectionSubscriptions.Clear();
+                if (!autofocusCompleted && IsRunningPhase(state.Phase)) {
+                    state.Phase = string.IsNullOrWhiteSpace(_disconnectReason)
+                        ? SecondaryAfPhase.Cancelled
+                        : SecondaryAfPhase.Failed;
+                    state.StatusText = state.Phase == SecondaryAfPhase.Failed ? "Autofocus failed" : "Autofocus cancelled";
+                    state.Status = state.StatusText;
+                    if (!string.IsNullOrWhiteSpace(_disconnectReason)) {
+                        state.LastError = _disconnectReason;
+                    }
+                    Push(state);
+                }
                 _internalCts?.Dispose();
                 _internalCts = null;
                 _runLock.Release();
@@ -297,27 +374,28 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
 
         private async Task MoveWithBacklashAsync(int targetPos, SecondaryAutofocusSettings s, CancellationToken ct) {
             Debug.WriteLine($"### PSP AF: ABOUT TO MOVE FOCUSER to {targetPos} ###");
+            EnsureDevicesReady();
             if (s.BacklashMode == BacklashMode.None || s.BacklashSteps <= 0) {
-                await _focus.MoveToAsync(targetPos, ct).ConfigureAwait(false);
+                await ExecuteDeviceCallAsync(() => _focus.MoveToAsync(targetPos, ct), "Focuser").ConfigureAwait(false);
                 return;
             }
 
             if (s.BacklashMode == BacklashMode.OvershootReturn) {
                 // Overshoot then return to approach from one direction
                 int overshoot = targetPos + s.BacklashSteps;
-                await _focus.MoveToAsync(overshoot, ct).ConfigureAwait(false);
-                await _focus.MoveToAsync(targetPos, ct).ConfigureAwait(false);
+                await ExecuteDeviceCallAsync(() => _focus.MoveToAsync(overshoot, ct), "Focuser").ConfigureAwait(false);
+                await ExecuteDeviceCallAsync(() => _focus.MoveToAsync(targetPos, ct), "Focuser").ConfigureAwait(false);
                 return;
             }
 
             if (s.BacklashMode == BacklashMode.OneWayApproach) {
                 // Always approach from higher position (example policy)
-                int cur = await _focus.GetPositionAsync(ct).ConfigureAwait(false);
+                int cur = await ExecuteDeviceCallAsync(() => _focus.GetPositionAsync(ct), "Focuser").ConfigureAwait(false);
                 if (cur < targetPos) {
                     int pre = targetPos + s.BacklashSteps;
-                    await _focus.MoveToAsync(pre, ct).ConfigureAwait(false);
+                    await ExecuteDeviceCallAsync(() => _focus.MoveToAsync(pre, ct), "Focuser").ConfigureAwait(false);
                 }
-                await _focus.MoveToAsync(targetPos, ct).ConfigureAwait(false);
+                await ExecuteDeviceCallAsync(() => _focus.MoveToAsync(targetPos, ct), "Focuser").ConfigureAwait(false);
             }
         }
 
@@ -460,6 +538,177 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
             var done = await Task.WhenAny(task, cancelTask).ConfigureAwait(false);
             ct.ThrowIfCancellationRequested();
             await task.ConfigureAwait(false);
+        }
+
+        private void SubscribeConnectionMonitoring(List<IDisposable> subscriptions) {
+            var cameraSource = ResolveCameraConnectionSource();
+            var focuserSource = ResolveFocuserConnectionSource();
+
+            SubscribeConnectionEvents(cameraSource, "Camera", subscriptions);
+            SubscribeConnectionEvents(focuserSource, "Focuser", subscriptions);
+        }
+
+        private void SubscribeConnectionEvents(object? source, string deviceLabel, List<IDisposable> subscriptions) {
+            if (source == null) return;
+
+            void EvaluateConnection() {
+                if (TryGetConnectionState(source, out var connected) && !connected) {
+                    TriggerDisconnect($"{deviceLabel} disconnected.");
+                }
+            }
+
+            foreach (var eventName in new[] { "ConnectedChanged", "ConnectionChanged", "IsConnectedChanged" }) {
+                var evt = source.GetType().GetEvent(eventName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                if (evt == null) continue;
+
+                var callback = new ConnectionCallback(EvaluateConnection);
+                var handler = callback.CreateHandler(evt.EventHandlerType);
+                if (handler == null) continue;
+
+                evt.AddEventHandler(source, handler);
+                subscriptions.Add(new EventSubscription(source, evt, handler, callback));
+            }
+
+            if (source is INotifyPropertyChanged notify) {
+                PropertyChangedEventHandler handler = (_, args) => {
+                    if (string.IsNullOrWhiteSpace(args.PropertyName)
+                        || string.Equals(args.PropertyName, "IsConnected", StringComparison.Ordinal)
+                        || string.Equals(args.PropertyName, "Connected", StringComparison.Ordinal)) {
+                        EvaluateConnection();
+                    }
+                };
+                notify.PropertyChanged += handler;
+                subscriptions.Add(new DelegateSubscription(() => notify.PropertyChanged -= handler));
+            }
+        }
+
+        private void EnsureDevicesReady() {
+            if (TryGetConnectionState(ResolveCameraConnectionSource(), out var cameraConnected) && !cameraConnected) {
+                TriggerDisconnect("Camera disconnected.");
+                throw new DeviceDisconnectedException("Camera disconnected.");
+            }
+
+            if (TryGetConnectionState(ResolveFocuserConnectionSource(), out var focuserConnected) && !focuserConnected) {
+                TriggerDisconnect("Focuser disconnected.");
+                throw new DeviceDisconnectedException("Focuser disconnected.");
+            }
+        }
+
+        private async Task<T> ExecuteDeviceCallAsync<T>(Func<Task<T>> action, string deviceLabel) {
+            try {
+                return await action().ConfigureAwait(false);
+            } catch (TimeoutException ex) {
+                var message = $"{deviceLabel} unreachable (timeout).";
+                TriggerDisconnect(message);
+                throw new DeviceDisconnectedException(message, ex);
+            }
+        }
+
+        private async Task ExecuteDeviceCallAsync(Func<Task> action, string deviceLabel) {
+            try {
+                await action().ConfigureAwait(false);
+            } catch (TimeoutException ex) {
+                var message = $"{deviceLabel} unreachable (timeout).";
+                TriggerDisconnect(message);
+                throw new DeviceDisconnectedException(message, ex);
+            }
+        }
+
+        private void TriggerDisconnect(string message) {
+            _disconnectReason ??= message;
+            try { _internalCts?.Cancel(); } catch { }
+        }
+
+        private object? ResolveCameraConnectionSource() {
+            if (_capture == null) return null;
+            var type = _capture.GetType();
+            var field = type.GetField("_secondaryCameraService", BindingFlags.Instance | BindingFlags.NonPublic);
+            return field?.GetValue(_capture) ?? _capture;
+        }
+
+        private object? ResolveFocuserConnectionSource() => _focuserMediator ?? _focus;
+
+        private static bool TryGetConnectionState(object? source, out bool isConnected) {
+            isConnected = true;
+            if (source == null) return false;
+
+            var type = source.GetType();
+            var prop = type.GetProperty("IsConnected", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                       ?? type.GetProperty("Connected", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            if (prop == null || prop.PropertyType != typeof(bool)) {
+                return false;
+            }
+
+            try {
+                isConnected = (bool)(prop.GetValue(source) ?? false);
+                return true;
+            } catch {
+                return false;
+            }
+        }
+
+        private static bool IsRunningPhase(SecondaryAfPhase phase) =>
+            phase is SecondaryAfPhase.Preparing
+                or SecondaryAfPhase.Moving
+                or SecondaryAfPhase.Settling
+                or SecondaryAfPhase.Capturing
+                or SecondaryAfPhase.Measuring
+                or SecondaryAfPhase.Fitting
+                or SecondaryAfPhase.MovingToBest;
+
+        private sealed class ConnectionCallback {
+            private readonly Action _evaluate;
+
+            public ConnectionCallback(Action evaluate) {
+                _evaluate = evaluate;
+            }
+
+            public void Handle(object? sender, EventArgs args) {
+                _evaluate();
+            }
+
+            public Delegate? CreateHandler(Type? handlerType) {
+                if (handlerType == null) return null;
+                var method = GetType().GetMethod(nameof(Handle), BindingFlags.Instance | BindingFlags.Public);
+                return method == null
+                    ? null
+                    : Delegate.CreateDelegate(handlerType, this, method, throwOnBindFailure: false);
+            }
+        }
+
+        private sealed class EventSubscription : IDisposable {
+            private readonly object _source;
+            private readonly EventInfo _eventInfo;
+            private readonly Delegate _handler;
+            private readonly ConnectionCallback _callback;
+
+            public EventSubscription(object source, EventInfo eventInfo, Delegate handler, ConnectionCallback callback) {
+                _source = source;
+                _eventInfo = eventInfo;
+                _handler = handler;
+                _callback = callback;
+            }
+
+            public void Dispose() {
+                _eventInfo.RemoveEventHandler(_source, _handler);
+            }
+        }
+
+        private sealed class DelegateSubscription : IDisposable {
+            private readonly Action _unsubscribe;
+
+            public DelegateSubscription(Action unsubscribe) {
+                _unsubscribe = unsubscribe;
+            }
+
+            public void Dispose() {
+                _unsubscribe();
+            }
+        }
+
+        private sealed class DeviceDisconnectedException : Exception {
+            public DeviceDisconnectedException(string message) : base(message) { }
+            public DeviceDisconnectedException(string message, Exception innerException) : base(message, innerException) { }
         }
     }
 }
