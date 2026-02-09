@@ -1,4 +1,4 @@
-﻿﻿using NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Models;
+﻿using NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Models;
 using NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Plot;
 using NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.State;
 using System;
@@ -21,6 +21,9 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
         private readonly ISecondaryAutofocusPlotSink? _plot;
         private readonly Equipment.Interfaces.Mediator.IFocuserMediator? _focuserMediator;
 
+        private readonly Func<bool>? _isCameraConnected;
+        private readonly Func<bool>? _isFocuserConnected;
+
         // Publish pipeline can be re-entrant (Publish -> subscriber updates state -> Publish ...),
         // which can cause stack exhaustion ("stack guard page" crash). We therefore coalesce
         // publish requests and dispatch them asynchronously.
@@ -31,7 +34,7 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
         private readonly SemaphoreSlim _runLock = new(1, 1);
         private CancellationTokenSource? _internalCts;
         private string? _disconnectReason;
-        private CurveFitResult fit;
+        private bool _plotOpen = false;
 
         public SecondaryAutofocusService(
             ISecondaryCameraCaptureService capture,
@@ -41,57 +44,65 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
             ISecondaryAfStatusPublisher publisher,
             Dispatcher? uiDispatcher = null,
             Equipment.Interfaces.Mediator.IFocuserMediator focuserMediator = null,
-            ISecondaryAutofocusPlotSink? plotSink = null) {
+            ISecondaryAutofocusPlotSink? plotSink = null,
+            Func<bool>? isCameraConnected = null,
+            Func<bool>? isFocuserConnected = null
+        ) {
             _capture = capture;
             _metric = metric;
             _focus = focus;
             _fit = fit;
-            _publisher = publisher ?? NullSecondaryAfStatusPublisher.Instance;
+            _publisher = publisher;
             _uiDispatcher = uiDispatcher;
-            _plot = plotSink;
             _focuserMediator = focuserMediator;
+            _plot = plotSink;
+            _isCameraConnected = isCameraConnected;
+            _isFocuserConnected = isFocuserConnected;
         }
 
         public void Cancel() {
             try { _internalCts?.Cancel(); } catch { }
         }
 
+        public async Task RunAsync(
+            PlateSolvePlusSettings.SecondaryAutofocusSettings settings,
+            SecondaryAutofocusRunState runState,
+            CancellationToken token) {
+            if (settings == null) throw new ArgumentNullException(nameof(settings));
+            if (runState == null) throw new ArgumentNullException(nameof(runState));
+
+            // Map plugin settings -> model settings (robust via reflection)
+            var model = new SecondaryAutofocusSettings();
+
+            var srcType = settings.GetType();
+            var dstType = typeof(SecondaryAutofocusSettings);
+
+            foreach (var dp in dstType.GetProperties(BindingFlags.Public | BindingFlags.Instance)) {
+                if (!dp.CanWrite) continue;
+
+                var sp = srcType.GetProperty(dp.Name, BindingFlags.Public | BindingFlags.Instance);
+                if (sp == null || !sp.CanRead) continue;
+
+                if (!dp.PropertyType.IsAssignableFrom(sp.PropertyType)) continue;
+
+                try {
+                    dp.SetValue(model, sp.GetValue(settings));
+                } catch {
+                    // ignore mapping errors -> defaults stay
+                }
+            }
+
+            // Call the real autofocus implementation
+            await RunAsync(model, runState, token).ConfigureAwait(false);
+        }
+
+
         public async Task<SecondaryAutofocusResult> RunAsync(
             SecondaryAutofocusSettings settings,
             SecondaryAutofocusRunState state,
             CancellationToken ct) {
-            // === HARD GUARDS ===
-            if (_focus == null) {
-                state.Phase = SecondaryAfPhase.Failed;
-                state.StatusText = "Focuser not connected.";
-                Push(state);
-                return new SecondaryAutofocusResult {
-                    Success = false,
-                    Cancelled = false,
-                    Error = "Focuser not connected",
-                    StartPosition = state.CurrentPosition,
-                    BestPosition = state.BestPosition,
-                    BestHfr = state.BestHfr,
-                    Samples = state.Samples?.ToList() ?? new List<FocusSample>()
-                };
-            }
 
-            if (_capture == null) {
-                state.Phase = SecondaryAfPhase.Failed;
-                state.StatusText = "Camera not connected.";
-                Push(state);
-                return new SecondaryAutofocusResult {
-                    Success = false,
-                    Cancelled = false,
-                    Error = "Camera not connected",
-                    StartPosition = state.CurrentPosition,
-                    BestPosition = state.BestPosition,
-                    BestHfr = state.BestHfr,
-                    Samples = state.Samples?.ToList() ?? new List<FocusSample>()
-                };
-            }
-
-            System.Diagnostics.Debug.WriteLine("### PSP AF: RunAsync ENTERED ###");
+            Debug.WriteLine("### PSP AF: RunAsync ENTERED ###");
 
             await _runLock.WaitAsync(ct).ConfigureAwait(false);
             _internalCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -102,17 +113,25 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
             try {
                 var lct = _internalCts.Token;
                 SubscribeConnectionMonitoring(connectionSubscriptions);
+                StartDisconnectPoller(lct);
+
                 EnsureDevicesReady();
 
-                // Erst ab hier "running"/"preparing"
-                Update(state, SecondaryAfPhase.Preparing, "Preparing…", 0);
-                state.StatusText = "Autofocus running...";
+                // initial
+                state.Phase = SecondaryAfPhase.Preparing;
+                state.StatusText = "Preparing";
+                state.Status = "Preparing";
+                state.LastError = null;
                 state.Progress = 0;
                 Push(state);
 
+                // Determine start position
                 int startPos = state.CurrentPosition > 0
                     ? state.CurrentPosition
-                    : await WithCancel(_focus.GetPositionAsync(lct), lct).ConfigureAwait(false);
+                    : await ExecuteDeviceCallAsync(() => _focus.GetPositionAsync(lct), "Focuser").ConfigureAwait(false);
+
+                state.CurrentPosition = startPos;
+                Push(state);
 
                 var positions = BuildPositions(startPos, settings);
                 if (positions.Count < 5)
@@ -149,6 +168,8 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
                     Update(state, SecondaryAfPhase.Capturing, $"Capturing {settings.ExposureSeconds:0.0}s", (double)i / total);
                     _plot?.SetPhase($"Step {i + 1}/{total} – capturing {settings.ExposureSeconds:0.0}s …");
                     EnsureDevicesReady();
+
+                    // IMPORTANT: this is your actual capture signature (from your original file)
                     var frame = await WithCancel(
                         ExecuteDeviceCallAsync(
                             () => _capture.CaptureAsync(
@@ -159,6 +180,7 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
 
                     Update(state, SecondaryAfPhase.Measuring, "Measuring stars (HFR)…", (double)i / total);
                     _plot?.SetPhase($"Step {i + 1}/{total} – measuring HFR …");
+
                     var metric = await WithCancel(_metric.MeasureAsync(frame, settings, lct), lct).ConfigureAwait(false);
 
                     var ts = DateTime.UtcNow;
@@ -190,21 +212,21 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
                     _plot?.AddSample(sample, i + 1, total, state.BestPosition, state.BestHfr);
                 }
 
-                // Fit curve
-                Update(state, SecondaryAfPhase.Fitting, "Fitting curve…", 0.95);
-                _plot?.SetPhase("Fitting curve…");
+                Update(state, SecondaryAfPhase.Fitting, "Fitting curve…", 0.98);
+                _plot?.SetPhase("Fitting curve …");
 
-                CurveFitResult? fitResult = null;
-                try {
-                    fitResult = ((dynamic)_fit).Fit(samples);
-                } catch {
-                    ((dynamic)_fit).Fit(samples);
-                }
-
+                object? fitResult = null;
+                int bestFromFit = bestPos;
                 int minPos = positions.Min();
                 int maxPos = positions.Max();
 
-                int bestFromFit;
+                // Use existing dynamic fit pattern (as in your original file)
+                try {
+                    fitResult = ((dynamic)_fit).Fit(samples);
+                } catch {
+                    try { ((dynamic)_fit).Fit(samples); } catch { }
+                }
+
                 try {
                     bestFromFit = ((dynamic)_fit).GetBestPosition(fitResult, fallbackBest: bestPos, minPos: minPos, maxPos: maxPos);
                 } catch {
@@ -215,45 +237,35 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
                     }
                 }
 
-                // Optional: estimate HFR at bestFromFit (simple: take nearest measured or vertex eval isn't exposed)
-                double bestFromFitHfr = samples
-                    .Where(s => !double.IsNaN(s.Hfr))
-                    .OrderBy(s => Math.Abs(s.Position - bestFromFit))
-                    .Select(s => s.Hfr)
-                    .FirstOrDefault(double.NaN);
-
-                _plot?.SetFitBest(bestFromFit, bestFromFitHfr);
-
-                // Move to best
-                Update(state, SecondaryAfPhase.MovingToBest, $"Moving to best ({bestFromFit})", 0.98);
-                _plot?.SetPhase($"Moving to best ({bestFromFit}) …");
-                await WithCancel(MoveWithBacklashAsync(bestFromFit, settings, lct), lct).ConfigureAwait(false);
-                await _focus.SettleAsync(settings.SettleTimeMs, lct).ConfigureAwait(false);
-
-                Update(state, SecondaryAfPhase.Completed, "Autofocus complete", 1.0);
-                _plot?.SetPhase("Autofocus complete (window stays open)");
-
-                // Final state
-                state.Phase = SecondaryAfPhase.Completed;
-                state.StatusText = "Autofocus completed";
-                state.Progress = 1.0;
+                state.BestPosition = bestFromFit;
+                state.BestHfr = bestHfr;
                 Push(state);
 
-                var result = new SecondaryAutofocusResult {
+                EnsureDevicesReady();
+
+                Update(state, SecondaryAfPhase.MovingToBest, $"Moving to best {bestFromFit}", 0.99);
+                _plot?.SetPhase($"Moving to best {bestFromFit} …");
+
+                await WithCancel(MoveWithBacklashAsync(bestFromFit, settings, lct), lct).ConfigureAwait(false);
+
+                state.Phase = SecondaryAfPhase.Completed;
+                state.StatusText = "Autofocus completed";
+                state.Status = "Autofocus completed";
+                state.Progress = 1;
+                Push(state);
+
+                var okResult = new SecondaryAutofocusResult {
                     Success = true,
                     Cancelled = false,
+                    Error = null,
                     StartPosition = startPos,
-                    BestPosition = bestFromFit,
-                    BestHfr = double.IsFinite(bestHfr)
-                        ? bestHfr
-                        : samples.Where(s => !double.IsNaN(s.Hfr)).Select(s => s.Hfr).DefaultIfEmpty(double.NaN).Min(),
-                    Samples = samples,
-                    Fit = fitResult
+                    BestPosition = state.BestPosition,
+                    BestHfr = state.BestHfr,
+                    Samples = state.Samples?.ToList() ?? new List<FocusSample>()
                 };
                 autofocusCompleted = true;
-                return result;
-            }
-            catch (DeviceDisconnectedException ex) {
+                return okResult;
+            } catch (DeviceDisconnectedException ex) {
                 state.Phase = SecondaryAfPhase.Failed;
                 state.StatusText = "Autofocus failed";
                 state.Status = "Autofocus failed";
@@ -261,7 +273,7 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
                 Push(state);
                 _plot?.SetPhase($"Autofocus failed: {ex.Message}");
 
-                var result = new SecondaryAutofocusResult {
+                var failResult = new SecondaryAutofocusResult {
                     Success = false,
                     Cancelled = false,
                     Error = ex.Message,
@@ -271,9 +283,9 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
                     Samples = state.Samples?.ToList() ?? new List<FocusSample>()
                 };
                 autofocusCompleted = true;
-                return result;
-            }
-            catch (OperationCanceledException) {
+                return failResult;
+            } catch (OperationCanceledException) {
+                // If we cancelled due to disconnect, treat it as failed with a clear message
                 if (!string.IsNullOrWhiteSpace(_disconnectReason)) {
                     state.Phase = SecondaryAfPhase.Failed;
                     state.StatusText = "Autofocus failed";
@@ -282,7 +294,7 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
                     Push(state);
                     _plot?.SetPhase($"Autofocus failed: {_disconnectReason}");
 
-                    var result = new SecondaryAutofocusResult {
+                    var failResult = new SecondaryAutofocusResult {
                         Success = false,
                         Cancelled = false,
                         Error = _disconnectReason,
@@ -292,7 +304,7 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
                         Samples = state.Samples?.ToList() ?? new List<FocusSample>()
                     };
                     autofocusCompleted = true;
-                    return result;
+                    return failResult;
                 }
 
                 state.Phase = SecondaryAfPhase.Cancelled;
@@ -312,8 +324,7 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
                 };
                 autofocusCompleted = true;
                 return cancelResult;
-            }
-            catch (Exception ex) {
+            } catch (Exception ex) {
                 state.Phase = SecondaryAfPhase.Failed;
                 state.StatusText = "Autofocus failed";
                 state.Status = "Autofocus failed";
@@ -332,12 +343,12 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
                 };
                 autofocusCompleted = true;
                 return errorResult;
-            }
-            finally {
+            } finally {
                 foreach (var subscription in connectionSubscriptions) {
                     subscription.Dispose();
                 }
                 connectionSubscriptions.Clear();
+
                 if (!autofocusCompleted && IsRunningPhase(state.Phase)) {
                     state.Phase = string.IsNullOrWhiteSpace(_disconnectReason)
                         ? SecondaryAfPhase.Cancelled
@@ -349,6 +360,7 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
                     }
                     Push(state);
                 }
+
                 _internalCts?.Dispose();
                 _internalCts = null;
                 _runLock.Release();
@@ -374,14 +386,21 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
 
         private async Task MoveWithBacklashAsync(int targetPos, SecondaryAutofocusSettings s, CancellationToken ct) {
             Debug.WriteLine($"### PSP AF: ABOUT TO MOVE FOCUSER to {targetPos} ###");
+
+            // --- NEW: never allow invalid positions (prevents "move to -1") ---
+            if (targetPos < 0) {
+                TriggerDisconnect("Invalid focuser position (device disconnected?).");
+                throw new DeviceDisconnectedException("Invalid focuser position (device disconnected?).");
+            }
+
             EnsureDevicesReady();
+
             if (s.BacklashMode == BacklashMode.None || s.BacklashSteps <= 0) {
                 await ExecuteDeviceCallAsync(() => _focus.MoveToAsync(targetPos, ct), "Focuser").ConfigureAwait(false);
                 return;
             }
 
             if (s.BacklashMode == BacklashMode.OvershootReturn) {
-                // Overshoot then return to approach from one direction
                 int overshoot = targetPos + s.BacklashSteps;
                 await ExecuteDeviceCallAsync(() => _focus.MoveToAsync(overshoot, ct), "Focuser").ConfigureAwait(false);
                 await ExecuteDeviceCallAsync(() => _focus.MoveToAsync(targetPos, ct), "Focuser").ConfigureAwait(false);
@@ -389,7 +408,6 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
             }
 
             if (s.BacklashMode == BacklashMode.OneWayApproach) {
-                // Always approach from higher position (example policy)
                 int cur = await ExecuteDeviceCallAsync(() => _focus.GetPositionAsync(ct), "Focuser").ConfigureAwait(false);
                 if (cur < targetPos) {
                     int pre = targetPos + s.BacklashSteps;
@@ -407,137 +425,51 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
         }
 
         private void Push(SecondaryAutofocusRunState state) {
-            // Coalesce: keep only the latest state. Never publish synchronously to avoid re-entrancy.
             _pendingPushState = state;
 
-            // Only schedule one publisher at a time.
             if (Interlocked.Exchange(ref _pushScheduled, 1) == 1)
                 return;
 
             void PublishLoop() {
                 try {
                     while (true) {
-                        // Grab and clear the pending state. If nothing pending -> stop.
                         var s = Interlocked.Exchange(ref _pendingPushState, null);
                         if (s == null)
                             return;
 
                         _publisher.Publish(s);
-                        // If another update arrived while publishing, it will be in _pendingPushState -> loop continues.
                     }
                 } finally {
-                    // Allow another schedule.
-                    Volatile.Write(ref _pushScheduled, 0);
+                    Interlocked.Exchange(ref _pushScheduled, 0);
 
-                    // If a new state arrived after we cleared scheduled, schedule again.
-                    if (_pendingPushState != null && Interlocked.Exchange(ref _pushScheduled, 1) == 0) {
-                        if (_uiDispatcher != null) {
-                            _uiDispatcher.BeginInvoke((Action)PublishLoop);
-                        } else {
-                            _ = Task.Run((Action)PublishLoop);
+                    if (_pendingPushState != null) {
+                        if (Interlocked.Exchange(ref _pushScheduled, 1) == 0) {
+                            SchedulePublish(PublishLoop);
                         }
                     }
                 }
             }
 
+            SchedulePublish(PublishLoop);
+        }
+
+        private void SchedulePublish(Action publishLoop) {
             if (_uiDispatcher != null) {
-                _uiDispatcher.BeginInvoke((Action)PublishLoop);
+                _uiDispatcher.BeginInvoke(publishLoop);
             } else {
-                _ = Task.Run((Action)PublishLoop);
+                Task.Run(publishLoop);
             }
         }
 
-        private Task AddSampleAsync(SecondaryAutofocusRunState state, FocusSample sample) {
-            // If WPF UI binds to ObservableCollection, add on UI thread.
-            // IMPORTANT: Use BeginInvoke (fire-and-forget) to avoid Dispatcher re-entrancy / deep call stacks.
-            if (_uiDispatcher == null || _uiDispatcher.CheckAccess()) {
+        private async Task AddSampleAsync(SecondaryAutofocusRunState state, FocusSample sample) {
+            // Keep UI thread happy if needed
+            if (_uiDispatcher != null && !_uiDispatcher.CheckAccess()) {
+                await _uiDispatcher.InvokeAsync(() => {
+                    state.Samples.Add(sample);
+                });
+            } else {
                 state.Samples.Add(sample);
-                Push(state);
-                return Task.CompletedTask;
             }
-
-            _uiDispatcher.BeginInvoke((Action)(() => {
-                state.Samples.Add(sample);
-                Push(state);
-            }));
-
-            return Task.CompletedTask;
-        }
-
-        public async Task RunAsync(PlateSolvePlusSettings.SecondaryAutofocusSettings settings, SecondaryAutofocusRunState runState, CancellationToken token) {
-            if (settings == null) throw new ArgumentNullException(nameof(settings));
-            if (runState == null) throw new ArgumentNullException(nameof(runState));
-
-            // Map plugin settings -> internal AF settings model
-            var modelSettings = MapToModelSettings(settings);
-
-            // Run the actual autofocus routine (the overload that returns SecondaryAutofocusResult)
-            await RunAsync(modelSettings, runState, token).ConfigureAwait(false);
-        }
-
-        private static SecondaryAutofocusSettings MapToModelSettings(PlateSolvePlusSettings.SecondaryAutofocusSettings src) {
-            var dst = new SecondaryAutofocusSettings();
-
-            // Reflection-based copy keeps this resilient to future setting additions without hard dependencies.
-            var srcType = src.GetType();
-            var dstType = typeof(SecondaryAutofocusSettings);
-
-            foreach (var dp in dstType.GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)) {
-                if (!dp.CanWrite) continue;
-
-                var sp = srcType.GetProperty(dp.Name, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-                if (sp == null || !sp.CanRead) continue;
-
-                object? sv;
-                try { sv = sp.GetValue(src); } catch { continue; }
-                if (sv == null) continue;
-
-                try {
-                    var targetType = Nullable.GetUnderlyingType(dp.PropertyType) ?? dp.PropertyType;
-
-                    // Direct assign
-                    if (targetType.IsInstanceOfType(sv)) {
-                        dp.SetValue(dst, sv);
-                        continue;
-                    }
-
-                    // Enum mapping by name/value
-                    if (targetType.IsEnum) {
-                        object enumVal;
-                        if (sv is string s) {
-                            enumVal = Enum.Parse(targetType, s, ignoreCase: true);
-                        } else if (sv.GetType().IsEnum) {
-                            enumVal = Enum.Parse(targetType, sv.ToString() ?? string.Empty, ignoreCase: true);
-                        } else {
-                            enumVal = Enum.ToObject(targetType, sv);
-                        }
-                        dp.SetValue(dst, enumVal);
-                        continue;
-                    }
-
-                    // Numeric / simple conversion
-                    var converted = Convert.ChangeType(sv, targetType, System.Globalization.CultureInfo.InvariantCulture);
-                    dp.SetValue(dst, converted);
-                } catch {
-                    // ignore non-convertible properties
-                }
-            }
-
-            return dst;
-        }
-
-        private static async Task<T> WithCancel<T>(Task<T> task, CancellationToken ct) {
-            var cancelTask = Task.Delay(Timeout.InfiniteTimeSpan, ct);
-            var done = await Task.WhenAny(task, cancelTask).ConfigureAwait(false);
-            ct.ThrowIfCancellationRequested();
-            return await task.ConfigureAwait(false);
-        }
-
-        private static async Task WithCancel(Task task, CancellationToken ct) {
-            var cancelTask = Task.Delay(Timeout.InfiniteTimeSpan, ct);
-            var done = await Task.WhenAny(task, cancelTask).ConfigureAwait(false);
-            ct.ThrowIfCancellationRequested();
-            await task.ConfigureAwait(false);
         }
 
         private void SubscribeConnectionMonitoring(List<IDisposable> subscriptions) {
@@ -582,15 +514,57 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
             }
         }
 
+
+        private void StartDisconnectPoller(CancellationToken ct) {
+            // Some device wrappers don't expose connection events/properties in a way we can reflect reliably.
+            // A lightweight poll makes disconnect detection robust (camera unplug, focuser disconnect, Alpaca drop).
+            if (_isCameraConnected == null && _isFocuserConnected == null) return;
+
+            _ = Task.Run(async () => {
+                try {
+                    while (!ct.IsCancellationRequested) {
+                        if (_isCameraConnected != null && !_isCameraConnected()) {
+                            TriggerDisconnect("Camera disconnected/unreachable.");
+                            return;
+                        }
+                        if (_isFocuserConnected != null && !_isFocuserConnected()) {
+                            TriggerDisconnect("Focuser disconnected/unreachable.");
+                            return;
+                        }
+                        await Task.Delay(500, ct).ConfigureAwait(false);
+                    }
+                } catch (OperationCanceledException) {
+                    // normal shutdown
+                } catch {
+                    // ignore poll errors; device calls will still fail-fast via ExecuteDeviceCallAsync
+                }
+            }, ct);
+        }
+
         private void EnsureDevicesReady() {
+            // --- NEW: if monitoring already detected a disconnect/unreachable, fail fast ---
+            if (!string.IsNullOrWhiteSpace(_disconnectReason)) {
+                throw new DeviceDisconnectedException(_disconnectReason);
+            }
+
+            // Prefer explicit connection providers (passed from the host VM) if available.
+            if (_isCameraConnected != null && !_isCameraConnected()) {
+                TriggerDisconnect("Camera disconnected/unreachable.");
+                throw new DeviceDisconnectedException("Camera disconnected/unreachable.");
+            }
+            if (_isFocuserConnected != null && !_isFocuserConnected()) {
+                TriggerDisconnect("Focuser disconnected/unreachable.");
+                throw new DeviceDisconnectedException("Focuser disconnected/unreachable.");
+            }
+
             if (TryGetConnectionState(ResolveCameraConnectionSource(), out var cameraConnected) && !cameraConnected) {
-                TriggerDisconnect("Camera disconnected.");
-                throw new DeviceDisconnectedException("Camera disconnected.");
+                TriggerDisconnect("Camera disconnected/unreachable.");
+                throw new DeviceDisconnectedException("Camera disconnected/unreachable.");
             }
 
             if (TryGetConnectionState(ResolveFocuserConnectionSource(), out var focuserConnected) && !focuserConnected) {
-                TriggerDisconnect("Focuser disconnected.");
-                throw new DeviceDisconnectedException("Focuser disconnected.");
+                TriggerDisconnect("Focuser disconnected/unreachable.");
+                throw new DeviceDisconnectedException("Focuser disconnected/unreachable.");
             }
         }
 
@@ -626,8 +600,10 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
             return field?.GetValue(_capture) ?? _capture;
         }
 
-        private object? ResolveFocuserConnectionSource() => _focuserMediator ?? _focus;
+        private object? ResolveFocuserConnectionSource()
+                 => (object?)_focuserMediator ?? _focus;
 
+        // --- CRITICAL FIX: treat exceptions while reading Connected as "disconnected/unreachable" ---
         private static bool TryGetConnectionState(object? source, out bool isConnected) {
             isConnected = true;
             if (source == null) return false;
@@ -643,8 +619,24 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
                 isConnected = (bool)(prop.GetValue(source) ?? false);
                 return true;
             } catch {
-                return false;
+                // if Connected getter throws (Alpaca timeout wrapped etc.), treat as not connected
+                isConnected = false;
+                return true;
             }
+        }
+
+        private static async Task WithCancel(Task task, CancellationToken ct) {
+            var cancelTask = Task.Delay(Timeout.InfiniteTimeSpan, ct);
+            var completed = await Task.WhenAny(task, cancelTask).ConfigureAwait(false);
+            if (completed == cancelTask) ct.ThrowIfCancellationRequested();
+            await task.ConfigureAwait(false);
+        }
+
+        private static async Task<T> WithCancel<T>(Task<T> task, CancellationToken ct) {
+            var cancelTask = Task.Delay(Timeout.InfiniteTimeSpan, ct);
+            var completed = await Task.WhenAny(task, cancelTask).ConfigureAwait(false);
+            if (completed == cancelTask) ct.ThrowIfCancellationRequested();
+            return await task.ConfigureAwait(false);
         }
 
         private static bool IsRunningPhase(SecondaryAfPhase phase) =>

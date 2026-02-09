@@ -363,7 +363,11 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                     publisher,
                     dispatcherReal,
                     focuserMediator: FocuserMediator,
-                    plotSink: plotSink
+                    plotSink: plotSink,
+                    isCameraConnected: () => {
+                        try { return SecondaryCameraService.IsConnected; } catch { return false; }
+                    },
+                    isFocuserConnected: () => (FocuserRef?.IsConnected == true)
                 );
 
                 SecondaryAutofocus = new SecondaryAutofocusViewModel(
