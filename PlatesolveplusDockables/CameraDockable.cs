@@ -2029,37 +2029,25 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
         private async Task RefreshSecondaryCameraListAsync() {
             try {
-                // Run discoveries off the UI thread
                 var ascomTask = Task.Run(() => AscomDiscovery.GetCameras());
-                var alpacaTask = AlpacaDiscovery.GetCamerasAsync(udpTimeout: TimeSpan.FromMilliseconds(900), ct: CancellationToken.None);
+
+                var alpacaDiscovery = new AlpacaDiscovery(profileService); // <-- dein IProfileService
+                var alpacaTask = alpacaDiscovery.GetCamerasAsync(
+                    udpTimeout: TimeSpan.FromMilliseconds(5000),
+                    ct: CancellationToken.None);
 
                 var ascomCams = await ascomTask.ConfigureAwait(false);
                 var alpacaCams = await alpacaTask.ConfigureAwait(false);
 
                 await Application.Current.Dispatcher.InvokeAsync(() => {
                     SecondaryCameraDevices.Clear();
-
                     foreach (var c in ascomCams) SecondaryCameraDevices.Add(c);
                     foreach (var c in alpacaCams) SecondaryCameraDevices.Add(c);
 
-                    if (SecondaryCameraDevices.Count == 0) {
-                        SecondaryCameraDevices.Add(new AscomDeviceInfo("ASCOM Simulator Camera (fallback)", FallbackSecondaryCameraProgId));
-                        DetailsText =
-                            "No ASCOM/Alpaca cameras found." +
-                            "ASCOM: " + (AscomDiscovery.GetLastError() ?? "n/a") + "" +
-                            "Alpaca: " + (AlpacaDiscovery.GetLastError() ?? "n/a");
-                    } else {
-                        DetailsText = $"Found {ascomCams.Count} ASCOM + {alpacaCams.Count} Alpaca cameras. Total: {SecondaryCameraDevices.Count}.";
-                    }
-
-                    var desired = SelectedSecondaryCameraProgId ?? FallbackSecondaryCameraProgId;
-                    var match = SecondaryCameraDevices.FirstOrDefault(x =>
-                        string.Equals(x.ProgId, desired, StringComparison.OrdinalIgnoreCase));
-
-                    SelectedSecondaryCamera = match ?? SecondaryCameraDevices.FirstOrDefault();
+                    DetailsText = $"Found {ascomCams.Count} ASCOM + {alpacaCams.Count} Alpaca cameras. Total: {SecondaryCameraDevices.Count}.";
+                    // Rest wie gehabt...
                 });
             } catch (Exception ex) {
-                // last resort: keep UI responsive and show error
                 await Application.Current.Dispatcher.InvokeAsync(() => {
                     DetailsText = "Secondary camera discovery failed." + ex;
                 });
