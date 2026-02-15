@@ -1,5 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using NINA.Core.Utility;
+using NINA.Plugins.PlateSolvePlus;
 using NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services;
 using NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.State;
 using System;
@@ -14,7 +16,7 @@ public sealed class SecondaryAutofocusViewModel : ObservableObject {
     private CancellationTokenSource? _cts;
 
     // beim Start: settings aus PluginSettings kopieren
-    public PlateSolvePlusSettings.SecondaryAutofocusSettings Settings { get; } = new();
+    public SecondaryAutofocusSettings Settings { get; } = new();
     public SecondaryAutofocusRunState RunState { get; } = new();
 
     public IAsyncRelayCommand StartCommand { get; }
@@ -24,7 +26,7 @@ public sealed class SecondaryAutofocusViewModel : ObservableObject {
         _af = af;
         _beforeRun = beforeRun ?? (() => { });
         StartCommand = new AsyncRelayCommand(StartAsync, CanStart);
-        CancelCommand = new RelayCommand(Cancel, CanCancel);
+        CancelCommand = new CommunityToolkit.Mvvm.Input.RelayCommand(Cancel, CanCancel);
     }
 
     private bool CanStart() =>
@@ -35,10 +37,28 @@ public sealed class SecondaryAutofocusViewModel : ObservableObject {
 
     private async Task StartAsync() {
         _cts?.Dispose();
-        _cts = new CancellationTokenSource(TimeSpan.FromSeconds(Settings.TimeoutSeconds));
 
         // Ensure dependencies (camera selection, setting sync, etc.)
-        try { _beforeRun(); } catch { /* never crash UI */ }
+        try {
+            _beforeRun();
+        } catch (Exception ex) {
+            RunState.LastError = $"beforeRun failed: {ex.Message}";
+            RunState.Phase = SecondaryAfPhase.Failed;
+            StartCommand.NotifyCanExecuteChanged();
+            CancelCommand.NotifyCanExecuteChanged();
+            return;
+        }
+
+        Logger.Debug($"[PlateSolvePlus] AF Settings instance hash: {Settings.GetHashCode()}");
+        Logger.Debug(
+            $"[PlateSolvePlus] VM Settings AFTER beforeRun: " +
+            $"Exposure={Settings.ExposureSeconds}s Gain={Settings.Gain} Bin={Settings.BinX}x{Settings.BinY} " +
+            $"StepSize={Settings.StepSize} Out={Settings.StepsOut} In={Settings.StepsIn} Settle={Settings.SettleTimeMs} " +
+            $"BacklashSteps={Settings.BacklashSteps} BacklashMode={Settings.BacklashMode} " +
+            $"MinStars={Settings.MinStars} MaxStars={Settings.MaxStars} Timeout={Settings.TimeoutSeconds}s");
+
+        // Now create CTS with the final timeout value
+        _cts = new CancellationTokenSource(TimeSpan.FromSeconds(Settings.TimeoutSeconds));
 
         RunState.Samples.Clear();
         RunState.LastError = null;
@@ -51,14 +71,12 @@ public sealed class SecondaryAutofocusViewModel : ObservableObject {
         try {
             await _af.RunAsync(Settings, RunState, _cts.Token);
         } catch (NotImplementedException) {
-            // defensive: avoid unhandled exceptions if service is stubbed
             RunState.LastError = "Secondary Autofocus is not implemented yet.";
         } catch (OperationCanceledException) {
-            // user cancel/timeout - no need to treat as crash
+            // user cancel/timeout
         } catch (Exception ex) {
             RunState.LastError = ex.Message;
             RunState.Phase = SecondaryAfPhase.Failed;
-
         } finally {
             StartCommand.NotifyCanExecuteChanged();
             CancelCommand.NotifyCanExecuteChanged();

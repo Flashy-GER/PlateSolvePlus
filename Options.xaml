@@ -2,122 +2,140 @@
     x:Class="NINA.Plugins.PlateSolvePlus.Options"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:local="clr-namespace:NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Models">
+    xmlns:psp="clr-namespace:NINA.Plugins.PlateSolvePlus">
     <ResourceDictionary.MergedDictionaries>
-        <ResourceDictionary Source="Converters/Converters.xaml"/>
+        <ResourceDictionary Source="Converters/Converters.xaml" />
     </ResourceDictionary.MergedDictionaries>
 
-    <!-- =========================================
-         Shared styles
-         ========================================= -->
+    <!--
+        =========================================
+        Shared styles
+        =========================================
+    -->
     <Style x:Key="FormRowLabel" TargetType="{x:Type TextBlock}">
-        <Setter Property="Width" Value="220"/>
-        <Setter Property="VerticalAlignment" Value="Center"/>
-        <Setter Property="Margin" Value="0,0,10,0"/>
+        <Setter Property="Width" Value="220" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Margin" Value="0,0,10,0" />
     </Style>
 
     <Style x:Key="FormRow" TargetType="{x:Type StackPanel}">
-        <Setter Property="Orientation" Value="Horizontal"/>
-        <Setter Property="Margin" Value="0,0,0,8"/>
+        <Setter Property="Orientation" Value="Horizontal" />
+        <Setter Property="Margin" Value="0,0,0,8" />
     </Style>
 
     <Style x:Key="HelpCard" TargetType="{x:Type Border}">
-        <Setter Property="CornerRadius" Value="6"/>
-        <Setter Property="Padding" Value="10"/>
-        <Setter Property="Margin" Value="0,0,0,10"/>
-        <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="BorderBrush" Value="#33000000"/>
-        <Setter Property="Background" Value="#11000000"/>
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="10" />
+        <Setter Property="Margin" Value="0,0,0,10" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderBrush" Value="#33000000" />
+        <Setter Property="Background" Value="#11000000" />
     </Style>
 
-    <!-- =========================================
-         Options Template
-         ========================================= -->
+    <!--
+        =========================================
+        Options Template
+        =========================================
+    -->
     <DataTemplate x:Key="PlateSolvePlus_Options">
         <ScrollViewer VerticalScrollBarVisibility="Auto">
 
             <Grid Margin="10" HorizontalAlignment="Left">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="560"/>
-                    <ColumnDefinition Width="20"/>
-                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="560" />
+                    <ColumnDefinition Width="20" />
+                    <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
-                <!-- =======================
-                     LEFT COLUMN (SETTINGS)
-                     ======================= -->
+                <!--
+                    =======================
+                    LEFT COLUMN (SETTINGS)
+                    =======================
+                -->
                 <StackPanel Grid.Column="0" HorizontalAlignment="Left">
 
-                    <TextBlock Text="PlateSolvePlus – Guide Scope Plate Solving"
-                               FontSize="16"
-                               FontWeight="SemiBold"
-                               Margin="0,0,0,12"/>
+                    <TextBlock
+                        Margin="0,0,0,12"
+                        FontSize="16"
+                        FontWeight="SemiBold"
+                        Text="PlateSolvePlus – Guide Scope Plate Solving" />
 
-                    <!-- ========== Camera Settings ========== -->
-                    <GroupBox Header="Capture Settings" Margin="0,0,0,10">
+                    <!--  ========== Camera Settings ==========  -->
+                    <GroupBox Margin="0,0,0,10" Header="Capture Settings">
                         <StackPanel Margin="10">
 
                             <StackPanel Style="{StaticResource FormRow}">
-                                <TextBlock Style="{StaticResource FormRowLabel}"
-                                           Text="Exposure (s)"
-                                           ToolTip="Exposure time of the guide / secondary camera used for plate solving."/>
-                                <TextBox Width="140"
-                                         ToolTip="Seconds, e.g. 1.5"
-                                         Text="{Binding Settings.GuideExposureSeconds, UpdateSourceTrigger=PropertyChanged}"/>
+                                <TextBlock
+                                    Style="{StaticResource FormRowLabel}"
+                                    Text="Exposure (s)"
+                                    ToolTip="Exposure time of the guide / secondary camera used for plate solving." />
+                                <TextBox
+                                    Width="140"
+                                    Text="{Binding Settings.GuideExposureSeconds, UpdateSourceTrigger=PropertyChanged}"
+                                    ToolTip="Seconds, e.g. 1.5" />
                             </StackPanel>
 
                             <StackPanel Style="{StaticResource FormRow}">
-                                <TextBlock Style="{StaticResource FormRowLabel}"
-                                           Text="Gain"
-                                           ToolTip="Gain of the secondary camera."/>
-                                <TextBox Width="140"
-                                         ToolTip="e.g. 0..300 or -1 (if supported)"
-                                         Text="{Binding Settings.GuideGain, UpdateSourceTrigger=PropertyChanged}"/>
+                                <TextBlock
+                                    Style="{StaticResource FormRowLabel}"
+                                    Text="Gain"
+                                    ToolTip="Gain of the secondary camera." />
+                                <TextBox
+                                    Width="140"
+                                    Text="{Binding Settings.GuideGain, UpdateSourceTrigger=PropertyChanged}"
+                                    ToolTip="e.g. 0..300 or -1 (if supported)" />
                             </StackPanel>
 
                             <StackPanel Style="{StaticResource FormRow}">
-                                <TextBlock Style="{StaticResource FormRowLabel}"
-                                           Text="Binning"
-                                           ToolTip="Binning of the secondary camera (typically 1 or 2)."/>
-                                <TextBox Width="140"
-                                         ToolTip="Integer ≥ 1"
-                                         Text="{Binding Settings.GuideBinning, UpdateSourceTrigger=PropertyChanged}"/>
+                                <TextBlock
+                                    Style="{StaticResource FormRowLabel}"
+                                    Text="Binning"
+                                    ToolTip="Binning of the secondary camera (typically 1 or 2)." />
+                                <TextBox
+                                    Width="140"
+                                    Text="{Binding Settings.GuideBinning, UpdateSourceTrigger=PropertyChanged}"
+                                    ToolTip="Integer ≥ 1" />
                             </StackPanel>
 
                         </StackPanel>
                     </GroupBox>
 
-                    <!-- ========== Optics / Scale ========== -->
-                    <GroupBox Header="Optics / Scale" Margin="0,0,0,10">
+                    <!--  ========== Optics / Scale ==========  -->
+                    <GroupBox Margin="0,0,0,10" Header="Optics / Scale">
                         <StackPanel Margin="10">
 
                             <StackPanel Style="{StaticResource FormRow}">
-                                <TextBlock Style="{StaticResource FormRowLabel}"
-                                           Text="Focal Length (mm)"
-                                           ToolTip="Focal length of the guide / secondary setup (important for pixel scale and solver parameters)."/>
-                                <TextBox Width="140"
-                                         ToolTip="e.g. 240"
-                                         Text="{Binding Settings.GuideFocalLengthMm, UpdateSourceTrigger=PropertyChanged}"/>
+                                <TextBlock
+                                    Style="{StaticResource FormRowLabel}"
+                                    Text="Focal Length (mm)"
+                                    ToolTip="Focal length of the guide / secondary setup (important for pixel scale and solver parameters)." />
+                                <TextBox
+                                    Width="140"
+                                    Text="{Binding Settings.GuideFocalLengthMm, UpdateSourceTrigger=PropertyChanged}"
+                                    ToolTip="e.g. 240" />
                             </StackPanel>
 
-                            <CheckBox Content="Use camera pixel size"
-                                      Margin="0,0,0,8"
-                                      ToolTip="If enabled: pixel size is taken from the camera/profile. Otherwise enter manually below."
-                                      IsChecked="{Binding Settings.UseCameraPixelSize, UpdateSourceTrigger=PropertyChanged}"/>
+                            <CheckBox
+                                Margin="0,0,0,8"
+                                Content="Use camera pixel size"
+                                IsChecked="{Binding Settings.UseCameraPixelSize, UpdateSourceTrigger=PropertyChanged}"
+                                ToolTip="If enabled: pixel size is taken from the camera/profile. Otherwise enter manually below." />
 
                             <StackPanel Style="{StaticResource FormRow}">
-                                <TextBlock Style="{StaticResource FormRowLabel}"
-                                           Text="Pixel Size (µm)"
-                                           ToolTip="Only relevant when 'Use camera pixel size' is disabled."/>
-                                <TextBox Width="140"
-                                         ToolTip="e.g. 3.75"
-                                         Text="{Binding Settings.GuidePixelSizeUm, UpdateSourceTrigger=PropertyChanged}">
+                                <TextBlock
+                                    Style="{StaticResource FormRowLabel}"
+                                    Text="Pixel Size (µm)"
+                                    ToolTip="Only relevant when 'Use camera pixel size' is disabled." />
+                                <TextBox
+                                    Width="140"
+                                    Text="{Binding Settings.GuidePixelSizeUm, UpdateSourceTrigger=PropertyChanged}"
+                                    ToolTip="e.g. 3.75">
                                     <TextBox.Style>
                                         <Style TargetType="{x:Type TextBox}">
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding Settings.UseCameraPixelSize}" Value="True">
-                                                    <Setter Property="IsEnabled" Value="False"/>
-                                                    <Setter Property="Opacity" Value="0.6"/>
+                                                    <Setter Property="IsEnabled" Value="False" />
+                                                    <Setter Property="Opacity" Value="0.6" />
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
@@ -128,139 +146,155 @@
                         </StackPanel>
                     </GroupBox>
 
-                    <!-- ========== Solver ========== -->
-                    <GroupBox Header="Solver" Margin="0,0,0,10">
+                    <!--  ========== Solver ==========  -->
+                    <GroupBox Margin="0,0,0,10" Header="Solver">
                         <StackPanel Margin="10">
 
                             <StackPanel Style="{StaticResource FormRow}">
-                                <TextBlock Style="{StaticResource FormRowLabel}"
-                                           Text="Search Radius (°)"
-                                           ToolTip="Search radius around the start coordinates. Larger = more robust but slower."/>
-                                <TextBox Width="140"
-                                         ToolTip="e.g. 5"
-                                         Text="{Binding Settings.SolverSearchRadiusDeg, UpdateSourceTrigger=PropertyChanged}"/>
+                                <TextBlock
+                                    Style="{StaticResource FormRowLabel}"
+                                    Text="Search Radius (°)"
+                                    ToolTip="Search radius around the start coordinates. Larger = more robust but slower." />
+                                <TextBox
+                                    Width="140"
+                                    Text="{Binding Settings.SolverSearchRadiusDeg, UpdateSourceTrigger=PropertyChanged}"
+                                    ToolTip="e.g. 5" />
                             </StackPanel>
 
                             <StackPanel Style="{StaticResource FormRow}">
-                                <TextBlock Style="{StaticResource FormRowLabel}"
-                                           Text="Downsample"
-                                           ToolTip="Downsample factor for the solver (e.g. 2 = faster)."/>
-                                <TextBox Width="140"
-                                         ToolTip="e.g. 2"
-                                         Text="{Binding Settings.SolverDownsample, UpdateSourceTrigger=PropertyChanged}"/>
+                                <TextBlock
+                                    Style="{StaticResource FormRowLabel}"
+                                    Text="Downsample"
+                                    ToolTip="Downsample factor for the solver (e.g. 2 = faster)." />
+                                <TextBox
+                                    Width="140"
+                                    Text="{Binding Settings.SolverDownsample, UpdateSourceTrigger=PropertyChanged}"
+                                    ToolTip="e.g. 2" />
                             </StackPanel>
 
                             <StackPanel Style="{StaticResource FormRow}">
-                                <TextBlock Style="{StaticResource FormRowLabel}"
-                                           Text="Timeout (s)"
-                                           ToolTip="Maximum time per solve attempt."/>
-                                <TextBox Width="140"
-                                         ToolTip="e.g. 60"
-                                         Text="{Binding Settings.SolverTimeoutSec, UpdateSourceTrigger=PropertyChanged}"/>
+                                <TextBlock
+                                    Style="{StaticResource FormRowLabel}"
+                                    Text="Timeout (s)"
+                                    ToolTip="Maximum time per solve attempt." />
+                                <TextBox
+                                    Width="140"
+                                    Text="{Binding Settings.SolverTimeoutSec, UpdateSourceTrigger=PropertyChanged}"
+                                    ToolTip="e.g. 60" />
                             </StackPanel>
 
                         </StackPanel>
                     </GroupBox>
 
-                    <!-- ========== Centering ========== -->
-                    <GroupBox Header="Centering" Margin="0,0,0,10">
+                    <!--  ========== Centering ==========  -->
+                    <GroupBox Margin="0,0,0,10" Header="Centering">
                         <StackPanel Margin="10">
 
                             <StackPanel Style="{StaticResource FormRow}">
-                                <TextBlock Style="{StaticResource FormRowLabel}"
-                                           Text="Threshold (arcmin)"
-                                           ToolTip="Target accuracy: maximum remaining error in arcminutes."/>
-                                <TextBox Width="140"
-                                         ToolTip="e.g. 1.0"
-                                         Text="{Binding Settings.CenteringThresholdArcmin, UpdateSourceTrigger=PropertyChanged}"/>
+                                <TextBlock
+                                    Style="{StaticResource FormRowLabel}"
+                                    Text="Threshold (arcmin)"
+                                    ToolTip="Target accuracy: maximum remaining error in arcminutes." />
+                                <TextBox
+                                    Width="140"
+                                    Text="{Binding Settings.CenteringThresholdArcmin, UpdateSourceTrigger=PropertyChanged}"
+                                    ToolTip="e.g. 1.0" />
                             </StackPanel>
 
                             <StackPanel Style="{StaticResource FormRow}">
-                                <TextBlock Style="{StaticResource FormRowLabel}"
-                                           Text="Max attempts"
-                                           ToolTip="Maximum number of iterations (solve → correction → slew/sync)."/>
-                                <TextBox Width="140"
-                                         ToolTip="e.g. 5"
-                                         Text="{Binding Settings.CenteringMaxAttempts, UpdateSourceTrigger=PropertyChanged}"/>
+                                <TextBlock
+                                    Style="{StaticResource FormRowLabel}"
+                                    Text="Max attempts"
+                                    ToolTip="Maximum number of iterations (solve → correction → slew/sync)." />
+                                <TextBox
+                                    Width="140"
+                                    Text="{Binding Settings.CenteringMaxAttempts, UpdateSourceTrigger=PropertyChanged}"
+                                    ToolTip="e.g. 5" />
                             </StackPanel>
 
                         </StackPanel>
                     </GroupBox>
 
-                    <!-- ========== Offset ========== -->
-                    <GroupBox Header="Offset (Secondary → Main)" Margin="0,0,0,10">
+                    <!--  ========== Offset ==========  -->
+                    <GroupBox Margin="0,0,0,10" Header="Offset (Secondary → Main)">
                         <StackPanel Margin="10">
 
-                            <TextBlock FontWeight="SemiBold"
-                                       Text="{Binding OffsetStatusText}"/>
+                            <TextBlock FontWeight="SemiBold" Text="{Binding OffsetStatusText}" />
 
-                            <Separator Margin="0,6"/>
-
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Width="180" Text="Rotation (quaternion):"/>
-                                <TextBlock Text="{Binding OffsetQuaternionText}"/>
-                            </StackPanel>
-
-                            <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
-                                <TextBlock Width="180" Text="Rotation angle:"/>
-                                <TextBlock Text="{Binding OffsetRotationDegText}"/>
-                            </StackPanel>
-
-                            <Separator Margin="0,6"/>
+                            <Separator Margin="0,6" />
 
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Width="180" Text="ΔRA:"/>
-                                <TextBlock Text="{Binding OffsetRaArcsecText}"/>
+                                <TextBlock Width="180" Text="Rotation (quaternion):" />
+                                <TextBlock Text="{Binding OffsetQuaternionText}" />
                             </StackPanel>
 
-                            <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
-                                <TextBlock Width="180" Text="ΔDec:"/>
-                                <TextBlock Text="{Binding OffsetDecArcsecText}"/>
+                            <StackPanel Margin="0,2,0,0" Orientation="Horizontal">
+                                <TextBlock Width="180" Text="Rotation angle:" />
+                                <TextBlock Text="{Binding OffsetRotationDegText}" />
                             </StackPanel>
 
-                            <Separator Margin="0,6"/>
+                            <Separator Margin="0,6" />
 
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Width="180" Text="Last calibrated:"/>
-                                <TextBlock Text="{Binding OffsetLastCalibratedText}"/>
+                                <TextBlock Width="180" Text="ΔRA:" />
+                                <TextBlock Text="{Binding OffsetRaArcsecText}" />
                             </StackPanel>
 
-                            <Button Content="Reset offset"
-                                    Command="{Binding ResetOffsetCommand}"
-                                    Margin="0,10,0,0"
-                                    ToolTip="Fully resets rotation and offset values."/>
+                            <StackPanel Margin="0,2,0,0" Orientation="Horizontal">
+                                <TextBlock Width="180" Text="ΔDec:" />
+                                <TextBlock Text="{Binding OffsetDecArcsecText}" />
+                            </StackPanel>
+
+                            <Separator Margin="0,6" />
+
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Width="180" Text="Last calibrated:" />
+                                <TextBlock Text="{Binding OffsetLastCalibratedText}" />
+                            </StackPanel>
+
+                            <Button
+                                Margin="0,10,0,0"
+                                Command="{Binding ResetOffsetCommand}"
+                                Content="Reset offset"
+                                ToolTip="Fully resets rotation and offset values." />
                         </StackPanel>
                     </GroupBox>
 
-                    <!-- ========== Touch-N-Stars / Local API ========== -->
-                    <GroupBox Header="Touch-N-Stars / Local API" Margin="0,0,0,10">
+                    <!--  ========== Touch-N-Stars / Local API ==========  -->
+                    <GroupBox Margin="0,0,0,10" Header="Touch-N-Stars / Local API">
                         <StackPanel Margin="10">
 
-                            <CheckBox Content="Enable local API"
-                                      ToolTip="Starts a local API host (trigger/results/preview for Touch-N-Stars)."
-                                      IsChecked="{Binding Settings.ApiEnabled, UpdateSourceTrigger=PropertyChanged}"/>
+                            <CheckBox
+                                Content="Enable local API"
+                                IsChecked="{Binding Settings.ApiEnabled, UpdateSourceTrigger=PropertyChanged}"
+                                ToolTip="Starts a local API host (trigger/results/preview for Touch-N-Stars)." />
 
-                            <StackPanel Style="{StaticResource FormRow}" Margin="0,10,0,0">
-                                <TextBlock Style="{StaticResource FormRowLabel}"
-                                           Text="Port"
-                                           ToolTip="TCP port of the API host (e.g. 1899)."/>
-                                <TextBox Width="140"
-                                         ToolTip="e.g. 17890"
-                                         Text="{Binding Settings.ApiPort, UpdateSourceTrigger=PropertyChanged}"/>
+                            <StackPanel Margin="0,10,0,0" Style="{StaticResource FormRow}">
+                                <TextBlock
+                                    Style="{StaticResource FormRowLabel}"
+                                    Text="Port"
+                                    ToolTip="TCP port of the API host (e.g. 1899)." />
+                                <TextBox
+                                    Width="140"
+                                    Text="{Binding Settings.ApiPort, UpdateSourceTrigger=PropertyChanged}"
+                                    ToolTip="e.g. 17890" />
                             </StackPanel>
 
-                            <CheckBox Content="Secure API access with token"
-                                      Margin="0,6,0,0"
-                                      ToolTip="If enabled, requests must include a valid token."
-                                      IsChecked="{Binding Settings.ApiRequireToken, UpdateSourceTrigger=PropertyChanged}"/>
+                            <CheckBox
+                                Margin="0,6,0,0"
+                                Content="Secure API access with token"
+                                IsChecked="{Binding Settings.ApiRequireToken, UpdateSourceTrigger=PropertyChanged}"
+                                ToolTip="If enabled, requests must include a valid token." />
 
-                            <StackPanel Style="{StaticResource FormRow}" Margin="0,8,0,0">
-                                <TextBlock Style="{StaticResource FormRowLabel}"
-                                           Text="API token"
-                                           ToolTip="Authentication token (only used if token protection is enabled)."/>
-                                <TextBox Width="280"
-                                         ToolTip="Only used when token protection is enabled."
-                                         Text="{Binding Settings.ApiToken, UpdateSourceTrigger=PropertyChanged}"/>
+                            <StackPanel Margin="0,8,0,0" Style="{StaticResource FormRow}">
+                                <TextBlock
+                                    Style="{StaticResource FormRowLabel}"
+                                    Text="API token"
+                                    ToolTip="Authentication token (only used if token protection is enabled)." />
+                                <TextBox
+                                    Width="280"
+                                    Text="{Binding Settings.ApiToken, UpdateSourceTrigger=PropertyChanged}"
+                                    ToolTip="Only used when token protection is enabled." />
                             </StackPanel>
 
                         </StackPanel>
@@ -268,19 +302,25 @@
 
                 </StackPanel>
 
-                <!-- =======================
-                     RIGHT COLUMN (HELP)
-                     ======================= -->
+                <!--
+                    =======================
+                    RIGHT COLUMN (HELP)
+                    =======================
+                -->
                 <StackPanel Grid.Column="2">
 
-                    <TextBlock Text="Help / Notes"
-                               FontSize="14"
-                               FontWeight="SemiBold"
-                               Margin="0,0,0,12"/>
+                    <TextBlock
+                        Margin="0,0,0,12"
+                        FontSize="14"
+                        FontWeight="SemiBold"
+                        Text="Help / Notes" />
 
                     <Border Style="{StaticResource HelpCard}">
                         <StackPanel>
-                            <TextBlock Text="Capture Settings" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                            <TextBlock
+                                Margin="0,0,0,6"
+                                FontWeight="SemiBold"
+                                Text="Capture Settings" />
                             <TextBlock TextWrapping="Wrap">
                                 Capture settings for the secondary camera used for plate solving.
                                 Shorter exposures are faster but less robust for faint stars.
@@ -290,7 +330,10 @@
 
                     <Border Style="{StaticResource HelpCard}">
                         <StackPanel>
-                            <TextBlock Text="Optics / Scale" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                            <TextBlock
+                                Margin="0,0,0,6"
+                                FontWeight="SemiBold"
+                                Text="Optics / Scale" />
                             <TextBlock TextWrapping="Wrap">
                                 Focal length and pixel size affect pixel scale and solver performance.
                                 Prefer using pixel size from the camera profile if possible.
@@ -300,7 +343,10 @@
 
                     <Border Style="{StaticResource HelpCard}">
                         <StackPanel>
-                            <TextBlock Text="Solver" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                            <TextBlock
+                                Margin="0,0,0,6"
+                                FontWeight="SemiBold"
+                                Text="Solver" />
                             <TextBlock TextWrapping="Wrap">
                                 A larger search radius increases tolerance but slows solving.
                                 Downsample 2 is usually a good compromise.
@@ -311,9 +357,12 @@
 
                     <Border Style="{StaticResource HelpCard}">
                         <StackPanel>
-                            <TextBlock Text="Offset" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                            <TextBlock
+                                Margin="0,0,0,6"
+                                FontWeight="SemiBold"
+                                Text="Offset" />
                             <TextBlock TextWrapping="Wrap">
-                                The currently calibrated offset can be viewed here. 
+                                The currently calibrated offset can be viewed here.
                                 The offset must be reset before recalibration.
                             </TextBlock>
                         </StackPanel>
@@ -321,7 +370,10 @@
 
                     <Border Style="{StaticResource HelpCard}">
                         <StackPanel>
-                            <TextBlock Text="Local API (Touch-N-Stars)" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                            <TextBlock
+                                Margin="0,0,0,6"
+                                FontWeight="SemiBold"
+                                Text="Local API (Touch-N-Stars)" />
                             <TextBlock TextWrapping="Wrap">
                                 Enables a local HTTP server (localhost).
                                 Change the port if there are conflicts.
@@ -329,81 +381,88 @@
                             </TextBlock>
                         </StackPanel>
                     </Border>
-                    <GroupBox Header="OAG Autofocus" Margin="0,10,0,0">
+
+                    <!--
+                        =========================
+                        OAG Camera Autofocus
+                        =========================
+                    -->
+
+                    <GroupBox Margin="0,10,0,0" Header="OAG Autofocus">
                         <StackPanel>
-                        <CheckBox Content="Show AF block in Camera UI"
-                                      Margin="0,0,0,10"
-                                      ToolTip="Shows/hides the Autofocus (AFBlock) section in the Camera dockable."
-                                      IsChecked="{Binding Settings.AFBlock, UpdateSourceTrigger=PropertyChanged}"/>
+                            <CheckBox
+                                Margin="0,0,0,10"
+                                Content="Show AF block in Camera UI"
+                                IsChecked="{Binding Settings.AFBlock, UpdateSourceTrigger=PropertyChanged}"
+                                ToolTip="Shows/hides the Autofocus (AFBlock) section in the Camera dockable." />
 
-                            <TextBlock Text="Capture" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                            <TextBlock
+                                Margin="0,0,0,6"
+                                FontWeight="SemiBold"
+                                Text="Capture" />
 
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="Exposure (s)" Width="150"/>
-                                <TextBox Width="80"
-                                         Text="{Binding Settings.SecondaryAutofocus.ExposureSeconds,
-                                                        UpdateSourceTrigger=PropertyChanged}"/>
+                                <TextBlock Width="150" Text="Exposure (s)" />
+                                <TextBox Width="80" Text="{Binding Settings.AfExposureSeconds, UpdateSourceTrigger=PropertyChanged}" />
                             </StackPanel>
 
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="Gain" Width="150"/>
-                                <TextBox Width="80"
-                                         Text="{Binding Settings.SecondaryAutofocus.Gain,
-                                                        UpdateSourceTrigger=PropertyChanged}"/>
+                                <TextBlock Width="150" Text="Gain" />
+                                <TextBox Width="80" Text="{Binding Settings.AfGain, UpdateSourceTrigger=PropertyChanged}" />
                             </StackPanel>
 
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="Bin X / Y" Width="150"/>
-                                <TextBox Width="38" Margin="0,0,6,0"
-                                         Text="{Binding Settings.SecondaryAutofocus.BinX,
-                                                        UpdateSourceTrigger=PropertyChanged}"/>
-                                <TextBox Width="38"
-                                         Text="{Binding Settings.SecondaryAutofocus.BinY,
-                                                        UpdateSourceTrigger=PropertyChanged}"/>
+                                <TextBlock Width="150" Text="Bin X / Y" />
+                                <TextBox
+                                    Width="38"
+                                    Margin="0,0,6,0"
+                                    Text="{Binding Settings.AfBinX, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBox Width="38" Text="{Binding Settings.AfBinY, UpdateSourceTrigger=PropertyChanged}" />
                             </StackPanel>
 
-                            <Separator Margin="0,8,0,8"/>
+                            <Separator Margin="0,8,0,8" />
 
-                            <TextBlock Text="Focus sweep" FontWeight="SemiBold" Margin="0,0,0,6"/>
-
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="Step size" Width="150"/>
-                                <TextBox Width="80"
-                                         Text="{Binding Settings.SecondaryAutofocus.StepSize,
-                                                        UpdateSourceTrigger=PropertyChanged}"/>
-                            </StackPanel>
+                            <TextBlock
+                                Margin="0,0,0,6"
+                                FontWeight="SemiBold"
+                                Text="Focus sweep" />
 
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="Steps out / in" Width="150"/>
-                                <TextBox Width="38" Margin="0,0,6,0"
-                                         Text="{Binding Settings.SecondaryAutofocus.StepsOut,
-                                                        UpdateSourceTrigger=PropertyChanged}"/>
-                                <TextBox Width="38"
-                                         Text="{Binding Settings.SecondaryAutofocus.StepsIn,
-                                                        UpdateSourceTrigger=PropertyChanged}"/>
-                            </StackPanel>
-
-                            <Separator Margin="0,8,0,8"/>
-
-                            <TextBlock Text="Backlash" FontWeight="SemiBold" Margin="0,0,0,6"/>
-
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="Backlash steps" Width="150"/>
-                                <TextBox Width="80"
-                                         Text="{Binding Settings.SecondaryAutofocus.BacklashSteps,
-                                                        UpdateSourceTrigger=PropertyChanged}"/>
+                                <TextBlock Width="150" Text="Step size" />
+                                <TextBox Width="80" Text="{Binding Settings.AfStepSize, UpdateSourceTrigger=PropertyChanged}" />
                             </StackPanel>
 
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="Mode" Width="150"/>
-                            <ComboBox Width="200"
-                                      SelectedValue="{Binding Settings.SecondaryAutofocus.BacklashMode,
-                                                              UpdateSourceTrigger=PropertyChanged}"
-                                      SelectedValuePath="Tag">
-                                <ComboBoxItem Content="None" Tag="{x:Static local:BacklashMode.None}"/>
-                                <ComboBoxItem Content="Overshoot + Return" Tag="{x:Static local:BacklashMode.OvershootReturn}"/>
-                                <ComboBoxItem Content="One-way approach" Tag="{x:Static local:BacklashMode.OneWayApproach}"/>
-                            </ComboBox>
+                                <TextBlock Width="150" Text="Steps out / in" />
+                                <TextBox
+                                    Width="38"
+                                    Margin="0,0,6,0"
+                                    Text="{Binding Settings.AfStepsOut, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBox Width="38" Text="{Binding Settings.AfStepsIn, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+
+                            <Separator Margin="0,8,0,8" />
+
+                            <TextBlock
+                                Margin="0,0,0,6"
+                                FontWeight="SemiBold"
+                                Text="Backlash" />
+
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Width="150" Text="Backlash steps" />
+                                <TextBox Width="80" Text="{Binding Settings.AfBacklashSteps, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Width="150" Text="Mode" />
+                                <ComboBox
+                                    Width="200"
+                                    SelectedValue="{Binding Settings.AfBacklashMode, UpdateSourceTrigger=PropertyChanged}"
+                                    SelectedValuePath="Tag">
+                                    <ComboBoxItem Content="None" Tag="{x:Static psp:BacklashMode.None}" />
+                                    <ComboBoxItem Content="Overshoot + Return" Tag="{x:Static psp:BacklashMode.OvershootReturn}" />
+                                    <ComboBoxItem Content="One-way approach" Tag="{x:Static psp:BacklashMode.OneWayApproach}" />
+                                </ComboBox>
                             </StackPanel>
 
                         </StackPanel>

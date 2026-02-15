@@ -1,7 +1,7 @@
-﻿using NINA.Core.Utility;
-using NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Models;
+﻿﻿using NINA.Core.Utility;
 using NINA.Plugins.PlateSolvePlus.Services;
 using System;
+using System.ComponentModel;
 
 namespace NINA.Plugins.PlateSolvePlus {
 
@@ -10,7 +10,252 @@ namespace NINA.Plugins.PlateSolvePlus {
         Arcsec = 1
     }
 
+    public enum HfrMetric {
+        Median = 0,
+        Mean = 1,
+        BestMedian = 2
+    }
+    public enum BacklashMode {
+        None = 0,
+        OvershootReturn = 1,
+        OneWayApproach = 2
+    }
+
     public class PlateSolvePlusSettings : BaseINPC {
+
+        public PlateSolvePlusSettings() {
+            // IMPORTANT: bubble nested changes up to root so NINA persists them
+            HookSecondaryAutofocus(SecondaryAutofocus);
+            // Ensure nested runtime object mirrors persisted Af* on startup
+            SyncAfToSecondary();
+        }
+
+        private void HookSecondaryAutofocus(SecondaryAutofocusSettings? s) {
+            if (s == null) return;
+
+            // avoid duplicate subscriptions
+            s.PropertyChanged -= SecondaryAutofocusOnPropertyChanged;
+            s.PropertyChanged += SecondaryAutofocusOnPropertyChanged;
+        }
+
+        public void SyncAfToSecondary() {
+            SecondaryAutofocus.ExposureSeconds = AfExposureSeconds;
+            SecondaryAutofocus.Gain = AfGain;
+            SecondaryAutofocus.BinX = AfBinX;
+            SecondaryAutofocus.BinY = AfBinY;
+            SecondaryAutofocus.StepSize = AfStepSize;
+            SecondaryAutofocus.StepsOut = AfStepsOut;
+            SecondaryAutofocus.StepsIn = AfStepsIn;
+            SecondaryAutofocus.SettleTimeMs = AfSettleTimeMs;
+            SecondaryAutofocus.BacklashSteps = AfBacklashSteps;
+            SecondaryAutofocus.BacklashMode = AfBacklashMode;
+            SecondaryAutofocus.TimeoutSeconds = AfTimeoutSeconds;
+        }
+
+        // Keep persisted Af* backing fields in sync when SecondaryAutofocus.* changes
+        private void SecondaryAutofocusOnPropertyChanged(object? sender, PropertyChangedEventArgs e) {
+            // Mark root as dirty so options persistence triggers
+            RaisePropertyChanged(nameof(SecondaryAutofocus));
+
+            // Mirror nested settings back into persisted Af* backing fields
+            // (update backing fields directly to avoid recursion)
+            switch (e.PropertyName) {
+                case nameof(SecondaryAutofocusSettings.ExposureSeconds):
+                    afExposureSeconds = SecondaryAutofocus.ExposureSeconds;
+                    RaisePropertyChanged(nameof(AfExposureSeconds));
+                    break;
+
+                case nameof(SecondaryAutofocusSettings.Gain):
+                    afGain = SecondaryAutofocus.Gain;
+                    RaisePropertyChanged(nameof(AfGain));
+                    break;
+
+                case nameof(SecondaryAutofocusSettings.BinX):
+                    afBinX = SecondaryAutofocus.BinX;
+                    RaisePropertyChanged(nameof(AfBinX));
+                    break;
+
+                case nameof(SecondaryAutofocusSettings.BinY):
+                    afBinY = SecondaryAutofocus.BinY;
+                    RaisePropertyChanged(nameof(AfBinY));
+                    break;
+
+                case nameof(SecondaryAutofocusSettings.StepSize):
+                    afStepSize = SecondaryAutofocus.StepSize;
+                    RaisePropertyChanged(nameof(AfStepSize));
+                    break;
+
+                case nameof(SecondaryAutofocusSettings.StepsOut):
+                    afStepsOut = SecondaryAutofocus.StepsOut;
+                    RaisePropertyChanged(nameof(AfStepsOut));
+                    break;
+
+                case nameof(SecondaryAutofocusSettings.StepsIn):
+                    afStepsIn = SecondaryAutofocus.StepsIn;
+                    RaisePropertyChanged(nameof(AfStepsIn));
+                    break;
+
+                case nameof(SecondaryAutofocusSettings.SettleTimeMs):
+                    afSettleTimeMs = SecondaryAutofocus.SettleTimeMs;
+                    RaisePropertyChanged(nameof(AfSettleTimeMs));
+                    break;
+
+                case nameof(SecondaryAutofocusSettings.BacklashSteps):
+                    afBacklashSteps = SecondaryAutofocus.BacklashSteps;
+                    RaisePropertyChanged(nameof(AfBacklashSteps));
+                    break;
+
+                case nameof(SecondaryAutofocusSettings.BacklashMode):
+                    afBacklashMode = SecondaryAutofocus.BacklashMode;
+                    RaisePropertyChanged(nameof(AfBacklashMode));
+                    break;
+
+                case nameof(SecondaryAutofocusSettings.TimeoutSeconds):
+                    afTimeoutSeconds = SecondaryAutofocus.TimeoutSeconds;
+                    RaisePropertyChanged(nameof(AfTimeoutSeconds));
+                    break;
+            }
+        }
+
+        private SecondaryAutofocusSettings secondaryAutofocus = new SecondaryAutofocusSettings();
+        public SecondaryAutofocusSettings SecondaryAutofocus {
+            get => secondaryAutofocus;
+            set {
+                if (ReferenceEquals(secondaryAutofocus, value)) return;
+
+                if (secondaryAutofocus != null)
+                    secondaryAutofocus.PropertyChanged -= SecondaryAutofocusOnPropertyChanged;
+
+                secondaryAutofocus = value ?? new SecondaryAutofocusSettings();
+                HookSecondaryAutofocus(secondaryAutofocus);
+                RaisePropertyChanged();
+            }
+        }
+
+        // -------------------------
+        // AF persisted fields
+        // -------------------------
+        private double afExposureSeconds = 5.0;
+        public double AfExposureSeconds {
+            get => afExposureSeconds;
+            set {
+                if (Math.Abs(afExposureSeconds - value) < 1e-6) return;
+                afExposureSeconds = value;
+                SecondaryAutofocus.ExposureSeconds = value;   // keep runtime object in sync
+                RaisePropertyChanged();
+            }
+        }
+
+        private int afGain = 0;
+        public int AfGain {
+            get => afGain;
+            set {
+                if (afGain == value) return;
+                afGain = value;
+                SecondaryAutofocus.Gain = value;
+                RaisePropertyChanged();
+            }
+        }
+
+        private int afBinX = 1;
+        public int AfBinX {
+            get => afBinX;
+            set {
+                if (afBinX == value) return;
+                afBinX = value;
+                SecondaryAutofocus.BinX = value;
+                RaisePropertyChanged();
+            }
+        }
+
+        private int afBinY = 1;
+        public int AfBinY {
+            get => afBinY;
+            set {
+                if (afBinY == value) return;
+                afBinY = value;
+                SecondaryAutofocus.BinY = value;
+                RaisePropertyChanged();
+            }
+        }
+
+        private int afStepSize = 40;
+        public int AfStepSize {
+            get => afStepSize;
+            set {
+                if (afStepSize == value) return;
+                afStepSize = value;
+                SecondaryAutofocus.StepSize = value;
+                RaisePropertyChanged();
+            }
+        }
+
+        private int afStepsOut = 4;
+        public int AfStepsOut {
+            get => afStepsOut;
+            set {
+                if (afStepsOut == value) return;
+                afStepsOut = value;
+                SecondaryAutofocus.StepsOut = value;
+                RaisePropertyChanged();
+            }
+        }
+
+        private int afStepsIn = 4;
+        public int AfStepsIn {
+            get => afStepsIn;
+            set {
+                if (afStepsIn == value) return;
+                afStepsIn = value;
+                SecondaryAutofocus.StepsIn = value;
+                RaisePropertyChanged();
+            }
+        }
+
+        private int afSettleTimeMs = 400;
+        public int AfSettleTimeMs {
+            get => afSettleTimeMs;
+            set {
+                if (afSettleTimeMs == value) return;
+                afSettleTimeMs = value;
+                SecondaryAutofocus.SettleTimeMs = value;
+                RaisePropertyChanged();
+            }
+        }
+
+        private int afBacklashSteps = 0;
+        public int AfBacklashSteps {
+            get => afBacklashSteps;
+            set {
+                if (afBacklashSteps == value) return;
+                afBacklashSteps = value;
+                SecondaryAutofocus.BacklashSteps = value;
+                RaisePropertyChanged();
+            }
+        }
+
+        private BacklashMode afBacklashMode = BacklashMode.OvershootReturn;
+        public BacklashMode AfBacklashMode {
+            get => afBacklashMode;
+            set {
+                if (afBacklashMode == value) return;
+                afBacklashMode = value;
+                SecondaryAutofocus.BacklashMode = value;
+                RaisePropertyChanged();
+            }
+        }
+
+        private int afTimeoutSeconds = 180;
+        public int AfTimeoutSeconds {
+            get => afTimeoutSeconds;
+            set {
+                if (afTimeoutSeconds == value) return;
+                afTimeoutSeconds = value;
+                SecondaryAutofocus.TimeoutSeconds = value;
+                RaisePropertyChanged();
+            }
+        }
+
 
         // =========================
         // Guider Capture
@@ -122,9 +367,6 @@ namespace NINA.Plugins.PlateSolvePlus {
         // Centering (like NINA)
         // =========================
         private double centeringThresholdArcmin = 1.0;
-        /// <summary>
-        /// Centering tolerance in arcminutes (same unit NINA uses for centering threshold).
-        /// </summary>
         public double CenteringThresholdArcmin {
             get => centeringThresholdArcmin;
             set {
@@ -136,9 +378,6 @@ namespace NINA.Plugins.PlateSolvePlus {
         }
 
         private int centeringMaxAttempts = 5;
-        /// <summary>
-        /// Maximum number of sync/slew iterations during Capture+Slew/Sync.
-        /// </summary>
         public int CenteringMaxAttempts {
             get => centeringMaxAttempts;
             set {
@@ -156,8 +395,6 @@ namespace NINA.Plugins.PlateSolvePlus {
 
         public string OffsetQuaternionText => offsetService.GetQuaternionText(this);
         public string OffsetRotationDegText => offsetService.GetRotationAngleText(this);
-        // public string OffsetRaArcsecText => offsetService.GetOffsetRaArcsecText(this);
-        // public string OffsetDecArcsecText => offsetService.GetOffsetDecArcsecText(this);
 
         private bool offsetEnabled = true;
         public bool OffsetEnabled {
@@ -176,11 +413,10 @@ namespace NINA.Plugins.PlateSolvePlus {
                 if (offsetMode == value) return;
                 offsetMode = value;
                 RaisePropertyChanged();
-                RaisePropertyChanged(nameof(OffsetModeInt)); // compat for int-based bindings/code
+                RaisePropertyChanged(nameof(OffsetModeInt));
             }
         }
 
-        // Compatibility: some code/UI may use int (0/1) instead of enum
         public int OffsetModeInt {
             get => (int)OffsetMode;
             set => OffsetMode = (OffsetMode)Math.Max(0, Math.Min(1, value));
@@ -189,7 +425,10 @@ namespace NINA.Plugins.PlateSolvePlus {
         private double offsetRaArcsec = 0.0;
         public double OffsetRaArcsec {
             get => offsetRaArcsec;
-            set { if (Math.Abs(offsetRaArcsec - value) < 0.000001) return; offsetRaArcsec = value; RaisePropertyChanged();
+            set {
+                if (Math.Abs(offsetRaArcsec - value) < 0.000001) return;
+                offsetRaArcsec = value;
+                RaisePropertyChanged();
                 RaisePropertyChanged(nameof(HasOffsetSet));
             }
         }
@@ -197,7 +436,10 @@ namespace NINA.Plugins.PlateSolvePlus {
         private double offsetDecArcsec = 0.0;
         public double OffsetDecArcsec {
             get => offsetDecArcsec;
-            set { if (Math.Abs(offsetDecArcsec - value) < 0.000001) return; offsetDecArcsec = value; RaisePropertyChanged();
+            set {
+                if (Math.Abs(offsetDecArcsec - value) < 0.000001) return;
+                offsetDecArcsec = value;
+                RaisePropertyChanged();
                 RaisePropertyChanged(nameof(HasOffsetSet));
             }
         }
@@ -205,7 +447,10 @@ namespace NINA.Plugins.PlateSolvePlus {
         private double rotationQw = 1.0;
         public double RotationQw {
             get => rotationQw;
-            set { if (Math.Abs(rotationQw - value) < 0.000001) return; rotationQw = value; RaisePropertyChanged();
+            set {
+                if (Math.Abs(rotationQw - value) < 0.000001) return;
+                rotationQw = value;
+                RaisePropertyChanged();
                 RaisePropertyChanged(nameof(HasOffsetSet));
                 OnPropertyChanged(nameof(OffsetQuaternionText));
                 OnPropertyChanged(nameof(OffsetRotationDegText));
@@ -215,7 +460,10 @@ namespace NINA.Plugins.PlateSolvePlus {
         private double rotationQx = 0.0;
         public double RotationQx {
             get => rotationQx;
-            set { if (Math.Abs(rotationQx - value) < 0.000001) return; rotationQx = value; RaisePropertyChanged();
+            set {
+                if (Math.Abs(rotationQx - value) < 0.000001) return;
+                rotationQx = value;
+                RaisePropertyChanged();
                 RaisePropertyChanged(nameof(HasOffsetSet));
                 OnPropertyChanged(nameof(OffsetQuaternionText));
                 OnPropertyChanged(nameof(OffsetRotationDegText));
@@ -225,7 +473,10 @@ namespace NINA.Plugins.PlateSolvePlus {
         private double rotationQy = 0.0;
         public double RotationQy {
             get => rotationQy;
-            set { if (Math.Abs(rotationQy - value) < 0.000001) return; rotationQy = value; RaisePropertyChanged();
+            set {
+                if (Math.Abs(rotationQy - value) < 0.000001) return;
+                rotationQy = value;
+                RaisePropertyChanged();
                 RaisePropertyChanged(nameof(HasOffsetSet));
                 OnPropertyChanged(nameof(OffsetQuaternionText));
                 OnPropertyChanged(nameof(OffsetRotationDegText));
@@ -235,7 +486,10 @@ namespace NINA.Plugins.PlateSolvePlus {
         private double rotationQz = 0.0;
         public double RotationQz {
             get => rotationQz;
-            set { if (Math.Abs(rotationQz - value) < 0.000001) return; rotationQz = value; RaisePropertyChanged();
+            set {
+                if (Math.Abs(rotationQz - value) < 0.000001) return;
+                rotationQz = value;
+                RaisePropertyChanged();
                 RaisePropertyChanged(nameof(HasOffsetSet));
                 OnPropertyChanged(nameof(OffsetQuaternionText));
                 OnPropertyChanged(nameof(OffsetRotationDegText));
@@ -277,7 +531,7 @@ namespace NINA.Plugins.PlateSolvePlus {
         public int ApiPort {
             get => apiPort;
             set {
-                var v = value < 1024 ? 1899 : value; // keep it sane
+                var v = value < 1024 ? 1899 : value;
                 if (apiPort == v) return;
                 apiPort = v;
                 OnPropertyChanged(nameof(ApiPort));
@@ -300,122 +554,12 @@ namespace NINA.Plugins.PlateSolvePlus {
         // Autofocus settings
         // =========================
         private bool afBlock = false;
-        //
-        // Controls whether the Autofocus block (AFBlock) is shown in the Camera dockable UI.
-        //
         public bool AFBlock {
             get => afBlock;
             set {
                 if (afBlock == value) return;
                 afBlock = value;
                 RaisePropertyChanged();
-            }
-        }
-        public SecondaryAutofocusSettings SecondaryAutofocus { get; set; }
-            = new SecondaryAutofocusSettings();
-
-        public sealed class SecondaryAutofocusSettings : BaseINPC {
-
-            private double exposureSeconds = 2.0;
-            public double ExposureSeconds {
-                get => exposureSeconds;
-                set {
-                    if (Math.Abs(exposureSeconds - value) < 1e-6) return;
-                    exposureSeconds = value; RaisePropertyChanged();
-                }
-            }
-
-            private int gain = 0;
-            public int Gain {
-                get => gain;
-                set { if (gain == value) return; gain = value; RaisePropertyChanged(); }
-            }
-
-            private int binX = 1;
-            public int BinX {
-                get => binX;
-                set { if (binX == value) return; binX = value; RaisePropertyChanged(); }
-            }
-
-            private int binY = 1;
-            public int BinY {
-                get => binY;
-                set { if (binY == value) return; binY = value; RaisePropertyChanged(); }
-            }
-
-            private int stepSize = 40;
-            public int StepSize {
-                get => stepSize;
-                set { if (stepSize == value) return; stepSize = value; RaisePropertyChanged(); }
-            }
-
-            private int stepsOut = 4;
-            public int StepsOut {
-                get => stepsOut;
-                set { if (stepsOut == value) return; stepsOut = value; RaisePropertyChanged(); }
-            }
-
-            private int stepsIn = 4;
-            public int StepsIn {
-                get => stepsIn;
-                set { if (stepsIn == value) return; stepsIn = value; RaisePropertyChanged(); }
-            }
-
-            private int settleTimeMs = 400;
-            public int SettleTimeMs {
-                get => settleTimeMs;
-                set { if (settleTimeMs == value) return; settleTimeMs = value; RaisePropertyChanged(); }
-            }
-
-            private int backlashSteps = 0;
-            public int BacklashSteps {
-                get => backlashSteps;
-                set { if (backlashSteps == value) return; backlashSteps = value; RaisePropertyChanged(); }
-            }
-
-            private BacklashMode backlashMode = BacklashMode.OvershootReturn;
-            public BacklashMode BacklashMode {
-                get => backlashMode;
-                set { if (backlashMode == value) return; backlashMode = value; RaisePropertyChanged(); }
-            }
-
-            private int minStars = 10;
-            public int MinStars {
-                get => minStars;
-                set { if (minStars == value) return; minStars = value; RaisePropertyChanged(); }
-            }
-
-            private int maxStars = 250;
-            public int MaxStars {
-                get => maxStars;
-                set { if (maxStars == value) return; maxStars = value; RaisePropertyChanged(); }
-            }
-
-            private int timeoutSeconds = 180;
-            public int TimeoutSeconds {
-                get => timeoutSeconds;
-                set { if (timeoutSeconds == value) return; timeoutSeconds = value; RaisePropertyChanged(); }
-            }
-            public void ApplyFrom(SecondaryAutofocusSettings other) {
-                if (other == null) return;
-
-                ExposureSeconds = other.ExposureSeconds;
-                Gain = other.Gain;
-                BinX = other.BinX;
-                BinY = other.BinY;
-
-                StepSize = other.StepSize;
-                StepsOut = other.StepsOut;
-                StepsIn = other.StepsIn;
-
-                SettleTimeMs = other.SettleTimeMs;
-
-                MinStars = other.MinStars;
-                MaxStars = other.MaxStars;
-                TimeoutSeconds = other.TimeoutSeconds;
-
-                BacklashSteps = other.BacklashSteps;
-                BacklashMode = other.BacklashMode;
             }
         }
 

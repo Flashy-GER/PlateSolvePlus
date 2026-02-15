@@ -4,6 +4,7 @@ using NINA.Equipment.Interfaces.Mediator;
 using NINA.Image.ImageData;
 using NINA.Image.Interfaces;
 using NINA.PlateSolving.Interfaces;
+using NINA.Plugins.PlateSolvePlus;
 using NINA.Plugins.PlateSolvePlus.Models;
 using NINA.Plugins.PlateSolvePlus.PlateSolving;
 using NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Plot;
@@ -370,16 +371,55 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                     isFocuserConnected: () => (FocuserRef?.IsConnected == true)
                 );
 
+                // helper: map persisted AF fields -> VM settings
+                void ApplyPersistedAfToVm(PlateSolvePlusSettings s) {
+                    // IMPORTANT: use Af* fields (persisted) as source of truth
+                    SecondaryAutofocus.Settings.ExposureSeconds = s.AfExposureSeconds;
+                    SecondaryAutofocus.Settings.Gain = s.AfGain;
+                    SecondaryAutofocus.Settings.BinX = s.AfBinX;
+                    SecondaryAutofocus.Settings.BinY = s.AfBinY;
+
+                    SecondaryAutofocus.Settings.StepSize = s.AfStepSize;
+                    SecondaryAutofocus.Settings.StepsOut = s.AfStepsOut;
+                    SecondaryAutofocus.Settings.StepsIn = s.AfStepsIn;
+
+                    SecondaryAutofocus.Settings.SettleTimeMs = s.AfSettleTimeMs;
+
+                    SecondaryAutofocus.Settings.BacklashSteps = s.AfBacklashSteps;
+                    SecondaryAutofocus.Settings.BacklashMode = s.AfBacklashMode;
+
+                    SecondaryAutofocus.Settings.TimeoutSeconds = s.AfTimeoutSeconds;
+
+                    Logger.Debug($"[PlateSolvePlus] AF Settings instance hash: {SecondaryAutofocus.Settings.GetHashCode()}");
+                    Logger.Debug($"[PlateSolvePlus] AF SETTINGS (from Af*): " +
+                        $"Exposure={SecondaryAutofocus.Settings.ExposureSeconds}s Gain={SecondaryAutofocus.Settings.Gain} " +
+                        $"Bin={SecondaryAutofocus.Settings.BinX}x{SecondaryAutofocus.Settings.BinY} " +
+                        $"StepSize={SecondaryAutofocus.Settings.StepSize} Out={SecondaryAutofocus.Settings.StepsOut} In={SecondaryAutofocus.Settings.StepsIn} " +
+                        $"Settle={SecondaryAutofocus.Settings.SettleTimeMs}ms " +
+                        $"BacklashSteps={SecondaryAutofocus.Settings.BacklashSteps} BacklashMode={SecondaryAutofocus.Settings.BacklashMode} " +
+                        $"MinStars={SecondaryAutofocus.Settings.MinStars} MaxStars={SecondaryAutofocus.Settings.MaxStars} " +
+                        $"Timeout={SecondaryAutofocus.Settings.TimeoutSeconds}s " +
+                        $"MinPos={SecondaryAutofocus.Settings.MinFocuserPosition} MaxPos={SecondaryAutofocus.Settings.MaxFocuserPosition}");
+                }
+
                 SecondaryAutofocus = new SecondaryAutofocusViewModel(
                     afService,
                     beforeRun: () => {
+                        var settings = PluginSettings?.Settings;
+
+                        Logger.Debug($"[PlateSolvePlus] Dockable PluginSettings: {(PluginSettings == null ? "NULL" : PluginSettings.GetType().FullName)}");
+                        Logger.Debug($"[PlateSolvePlus] Dockable Settings instance hash: {settings?.GetHashCode()}");
+
                         // Ensure AF uses the currently selected secondary camera service
                         EnsureSecondaryCameraService();
-
-                        var settings = PluginSettings?.Settings;
-                        if (settings?.SecondaryAutofocus != null) {
-                            SecondaryAutofocus.Settings.ApplyFrom(settings.SecondaryAutofocus);
+                      
+                        if (settings != null) {
+                            // SOURCE OF TRUTH: persisted Af* fields
+                            ApplyPersistedAfToVm(settings);
+                        } else {
+                            Logger.Debug("[PlateSolvePlus] Dockable Settings is NULL (cannot apply Af*).");
                         }
+
                         // Startposition aus der Referenz nehmen
                         if (FocuserRef?.TryGetPosition(out var p) == true) {
                             SecondaryAutofocus.RunState.CurrentPosition = p;
@@ -389,13 +429,13 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                     }
                 );
 
-                // initial sync
+                // initial sync (same as beforeRun)
                 var initial = PluginSettings?.Settings;
-                if (initial?.SecondaryAutofocus != null) {
-                    SecondaryAutofocus.Settings.ApplyFrom(initial.SecondaryAutofocus);
+                if (initial != null) {
+                    ApplyPersistedAfToVm(initial);
                 }
 
-                secondaryAutofocusInitialized = true;                
+                secondaryAutofocusInitialized = true;
                 RaisePropertyChanged(nameof(SecondaryAutofocus));
                 RaisePropertyChanged(nameof(IsSecondaryAutofocusAvailable));
                 RaisePropertyChanged(nameof(CanStartSecondaryAutofocus));
@@ -403,13 +443,13 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
             } catch (Exception ex) {
                 // keep it retryable
-                secondaryAutofocusInitialized = false;                
+                secondaryAutofocusInitialized = false;
                 ResetSecondaryAutofocus();
                 StatusText = $"Secondary AF init failed: {ex.Message}";
                 Logger.Error($"[PlateSolvePlus] Secondary AF init failed: {ex}");
-
-            } 
+            }
         }
+
 
         private void ApplySecondaryAutofocusState(SecondaryAutofocusRunState state) {
             // Running Phases (gleich wie deine IsSecondaryAutofocusRunning-Logik)
@@ -450,7 +490,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             RaisePropertyChanged(nameof(CanCancelSecondaryAutofocus));
 
         }
-
 
         private sealed class DockableSecondaryAfStatusPublisher : ISecondaryAfStatusPublisher {
             private readonly CameraDockable _owner;
@@ -892,7 +931,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         private bool useSlewInsteadOfSync;
 
         public string CaptureAndSolveButtonText =>
-            UseSlewInsteadOfSync ? "Center + Sync" : "Capture + Sync";
+            UseSlewInsteadOfSync ? "Slew + Center" : "Capture + Sync";
 
         // ✅ require actual coordinates, not just "some connected flag"
         public bool CanCaptureAndSolve =>
@@ -1016,8 +1055,8 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         public bool IsMountConnected => MountState != MountConnectionState.Disconnected;
 
         public string MountStatusText => MountState switch {
-            MountConnectionState.ConnectedWithCoords => "Mount: Verbunden ✅",
-            MountConnectionState.ConnectedNoCoords => "Mount: Verbunden ⚠️ (keine Koordinaten)",
+            MountConnectionState.ConnectedWithCoords => "Mount: connected ✅",
+            MountConnectionState.ConnectedNoCoords => "Mount: connected ⚠️ (no Coordinates)",
             _ => "Mount: Nicht verbunden ❌"
         };
 

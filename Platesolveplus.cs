@@ -1,4 +1,4 @@
-﻿﻿using NINA.Plugin;
+﻿﻿﻿using NINA.Plugin;
 using NINA.Plugin.Interfaces;
 using NINA.Plugins.PlateSolvePlus.Services;
 using NINA.Profile;
@@ -54,11 +54,12 @@ public static class PlateSolvePlusSettingsBus {
     public class Platesolveplus : PluginBase, INotifyPropertyChanged {
 
         private readonly IProfileService profileService;
-        private readonly IPluginOptionsAccessor options;
+        private readonly PluginOptionsAccessor options;
+
+        private bool isLoadingSettings;
+        private bool suppressBusPublish;
 
         public PlateSolvePlusSettings Settings { get; }
-
-
 
         // =========================
         // Offset display helpers (for Options.xaml / API)
@@ -67,28 +68,23 @@ public static class PlateSolvePlusSettingsBus {
 
         public bool HasOffsetSet => Settings.HasOffsetSet;
 
-        public string OffsetStatusText => HasOffsetSet ? "Offset: kalibriert ✅" : "Offset: nicht gesetzt ⚠️";
+        public string OffsetStatusText => HasOffsetSet ? "Offset: calibrated" : "Offset: NOT calibrated";
 
         public string OffsetQuaternionText => offsetService.GetQuaternionText(Settings);
+
         public string OffsetRotationDegText => offsetService.GetRotationAngleText(Settings);
 
-        public string OffsetRaArcsecText => $"{Settings.OffsetRaArcsec:0.0} ″";
-        public string OffsetDecArcsecText => $"{Settings.OffsetDecArcsec:0.0} ″";
+        public string OffsetRaArcsecText => Settings.OffsetRaArcsec.ToString("0.00", CultureInfo.InvariantCulture);
+
+        public string OffsetDecArcsecText => Settings.OffsetDecArcsec.ToString("0.00", CultureInfo.InvariantCulture);
 
         public string OffsetLastCalibratedText =>
             Settings.OffsetLastCalibratedUtc.HasValue
-                ? Settings.OffsetLastCalibratedUtc.Value.ToString("yyyy-MM-dd HH:mm:ss")
-                : "-";
+                ? Settings.OffsetLastCalibratedUtc.Value.ToLocalTime().ToString("g")
+                : "—";
 
-        // For Options.xaml "Delete Rotation Offset"
-        public ICommand ResetRotationOffsetCommand { get; }
         public ICommand ResetOffsetCommand { get; }
-
-
-        private bool isLoadingSettings;
-        // Prevent endless ping-pong when we apply values coming from a different MEF container
-        // (e.g. Dockable calibrated offset -> Options UI instance).
-        private bool suppressBusPublish;
+        public ICommand ResetRotationOffsetCommand { get; }
 
         [ImportingConstructor]
         public Platesolveplus(IProfileService profileService) {
@@ -100,7 +96,6 @@ public static class PlateSolvePlusSettingsBus {
 
             ResetRotationOffsetCommand = new SimpleCommand(ResetRotationOffset);
             ResetOffsetCommand = new SimpleCommand(ResetOffset);
-
 
             LoadAllIntoSettings(Settings);
 
@@ -173,69 +168,96 @@ public static class PlateSolvePlusSettingsBus {
                     if (value is int i5) Settings.CenteringMaxAttempts = i5;
                     break;
 
-                case nameof(PlateSolvePlusSettings.OffsetEnabled):
-                    if (value is bool bo) Settings.OffsetEnabled = bo;
-                    break;
-                case nameof(PlateSolvePlusSettings.OffsetMode):
-                    if (value is OffsetMode om) Settings.OffsetMode = om;
-                    else if (value is int omInt) Settings.OffsetModeInt = omInt;
-                    break;
-                case nameof(PlateSolvePlusSettings.OffsetModeInt):
-                    if (value is int omi) Settings.OffsetModeInt = omi;
-                    break;
-                case nameof(PlateSolvePlusSettings.OffsetRaArcsec):
-                    if (value is double dra) Settings.OffsetRaArcsec = dra;
-                    break;
-                case nameof(PlateSolvePlusSettings.OffsetDecArcsec):
-                    if (value is double ddec) Settings.OffsetDecArcsec = ddec;
-                    break;
-                case nameof(PlateSolvePlusSettings.OffsetLastCalibratedUtc):
-                    if (value is DateTime dt) Settings.OffsetLastCalibratedUtc = dt;
-                    else Settings.OffsetLastCalibratedUtc = null;
-                    break;
-
-                case nameof(PlateSolvePlusSettings.RotationQw):
-                    if (value is double qw) Settings.RotationQw = qw;
-                    break;
-                case nameof(PlateSolvePlusSettings.RotationQx):
-                    if (value is double qx) Settings.RotationQx = qx;
-                    break;
-                case nameof(PlateSolvePlusSettings.RotationQy):
-                    if (value is double qy) Settings.RotationQy = qy;
-                    break;
-                case nameof(PlateSolvePlusSettings.RotationQz):
-                    if (value is double qz) Settings.RotationQz = qz;
-                    break;
-
                 case nameof(PlateSolvePlusSettings.ApiEnabled):
-                    if (value is bool ab) Settings.ApiEnabled = ab;
+                    if (value is bool b2) Settings.ApiEnabled = b2;
                     break;
                 case nameof(PlateSolvePlusSettings.ApiPort):
-                    if (value is int ap) Settings.ApiPort = ap;
+                    if (value is int i6) Settings.ApiPort = i6;
                     break;
                 case nameof(PlateSolvePlusSettings.ApiRequireToken):
-                    if (value is bool art) Settings.ApiRequireToken = art;
+                    if (value is bool b3) Settings.ApiRequireToken = b3;
                     break;
                 case nameof(PlateSolvePlusSettings.ApiToken):
-                    Settings.ApiToken = value as string;
+                    if (value is string s1) Settings.ApiToken = s1;
                     break;
 
                 case nameof(PlateSolvePlusSettings.AFBlock):
                     if (value is bool afb) Settings.AFBlock = afb;
                     break;
+                case nameof(PlateSolvePlusSettings.AfExposureSeconds):
+                    if (value is double dAfExp) Settings.AfExposureSeconds = dAfExp;
+                    break;
+                case nameof(PlateSolvePlusSettings.AfGain):
+                    if (value is int iAfGain) Settings.AfGain = iAfGain;
+                    break;
+                case nameof(PlateSolvePlusSettings.AfBinX):
+                    if (value is int iAfBinX) Settings.AfBinX = iAfBinX;
+                    break;
+                case nameof(PlateSolvePlusSettings.AfBinY):
+                    if (value is int iAfBinY) Settings.AfBinY = iAfBinY;
+                    break;
+                case nameof(PlateSolvePlusSettings.AfStepSize):
+                    if (value is int iAfStep) Settings.AfStepSize = iAfStep;
+                    break;
+                case nameof(PlateSolvePlusSettings.AfStepsOut):
+                    if (value is int iAfOut) Settings.AfStepsOut = iAfOut;
+                    break;
+                case nameof(PlateSolvePlusSettings.AfStepsIn):
+                    if (value is int iAfIn) Settings.AfStepsIn = iAfIn;
+                    break;
+                case nameof(PlateSolvePlusSettings.AfSettleTimeMs):
+                    if (value is int iAfSettle) Settings.AfSettleTimeMs = iAfSettle;
+                    break;
+                case nameof(PlateSolvePlusSettings.AfBacklashSteps):
+                    if (value is int iAfBlSteps) Settings.AfBacklashSteps = iAfBlSteps;
+                    break;
+                case nameof(PlateSolvePlusSettings.AfBacklashMode):
+                    if (value is BacklashMode mAfBl) Settings.AfBacklashMode = mAfBl;
+                    else if (value is int mAfBlInt) Settings.AfBacklashMode = (BacklashMode)mAfBlInt;
+                    break;
+                case nameof(PlateSolvePlusSettings.AfTimeoutSeconds):
+                    if (value is int iAfTimeout) Settings.AfTimeoutSeconds = iAfTimeout;
+                    break;
+
+                case nameof(PlateSolvePlusSettings.OffsetEnabled):
+                    if (value is bool b4) Settings.OffsetEnabled = b4;
+                    break;
+                case nameof(PlateSolvePlusSettings.OffsetRaArcsec):
+                    if (value is double d6) Settings.OffsetRaArcsec = d6;
+                    break;
+                case nameof(PlateSolvePlusSettings.OffsetDecArcsec):
+                    if (value is double d7) Settings.OffsetDecArcsec = d7;
+                    break;
+
+                case nameof(PlateSolvePlusSettings.RotationQw):
+                    if (value is double d8) Settings.RotationQw = d8;
+                    break;
+                case nameof(PlateSolvePlusSettings.RotationQx):
+                    if (value is double d9) Settings.RotationQx = d9;
+                    break;
+                case nameof(PlateSolvePlusSettings.RotationQy):
+                    if (value is double d10) Settings.RotationQy = d10;
+                    break;
+                case nameof(PlateSolvePlusSettings.RotationQz):
+                    if (value is double d11) Settings.RotationQz = d11;
+                    break;
+
+                case nameof(PlateSolvePlusSettings.OffsetLastCalibratedUtc):
+                    if (value is DateTime dt) Settings.OffsetLastCalibratedUtc = dt;
+                    break;
+
+                case nameof(PlateSolvePlusSettings.OffsetMode):
+                    if (value is OffsetMode om) Settings.OffsetMode = om;
+                    else if (value is int omi) Settings.OffsetMode = (OffsetMode)Math.Max(0, Math.Min(1, omi));
+                    break;
+
+                case nameof(PlateSolvePlusSettings.OffsetModeInt):
+                    if (value is int omInt) Settings.OffsetModeInt = omInt;
+                    break;
             }
         }
 
-        private void ResetRotationOffset() {
-            Settings.RotationQw = 1.0;
-            Settings.RotationQx = 0.0;
-            Settings.RotationQy = 0.0;
-            Settings.RotationQz = 0.0;
-
-            Settings.OffsetLastCalibratedUtc = null;
-        }
-
-        private void Settings_PropertyChanged(object? sender, PropertyChangedEventArgs e) {
+        void Settings_PropertyChanged(object? sender, PropertyChangedEventArgs e) {
             if (isLoadingSettings) return;
 
             var name = e.PropertyName ?? string.Empty;
@@ -247,7 +269,6 @@ public static class PlateSolvePlusSettingsBus {
             }
 
             RaisePropertyChanged(name);
-
 
             // Keep derived offset display properties in sync
             if (name == nameof(PlateSolvePlusSettings.OffsetRaArcsec) ||
@@ -272,13 +293,20 @@ public static class PlateSolvePlusSettingsBus {
                 RaisePropertyChanged(nameof(IsRotationMode));
                 RaisePropertyChanged(nameof(IsArcsecMode));
             }
-
         }
 
         private void ResetOffset() {
             Settings.ResetOffset();
         }
-        private void LoadAllIntoSettings(PlateSolvePlusSettings s) {
+        private void ResetRotationOffset() {
+            Settings.RotationQw = 1.0;
+            Settings.RotationQx = 0.0;
+            Settings.RotationQy = 0.0;
+            Settings.RotationQz = 0.0;
+            Settings.OffsetLastCalibratedUtc = null;
+        }
+
+        void LoadAllIntoSettings(PlateSolvePlusSettings s) {
             isLoadingSettings = true;
             try {
                 // Capture
@@ -309,6 +337,23 @@ public static class PlateSolvePlusSettingsBus {
 
                 // UI toggles
                 s.AFBlock = options.GetValueBoolean(nameof(PlateSolvePlusSettings.AFBlock), false);
+
+                // OAG Autofocus
+                s.AfExposureSeconds = options.GetValueDouble(nameof(PlateSolvePlusSettings.AfExposureSeconds), 5.0);
+                s.AfGain = options.GetValueInt32(nameof(PlateSolvePlusSettings.AfGain), 0);
+                s.AfBinX = Math.Max(1, options.GetValueInt32(nameof(PlateSolvePlusSettings.AfBinX), 1));
+                s.AfBinY = Math.Max(1, options.GetValueInt32(nameof(PlateSolvePlusSettings.AfBinY), 1));
+                s.AfStepSize = Math.Max(1, options.GetValueInt32(nameof(PlateSolvePlusSettings.AfStepSize), 40));
+                s.AfStepsOut = Math.Max(1, options.GetValueInt32(nameof(PlateSolvePlusSettings.AfStepsOut), 4));
+                s.AfStepsIn = Math.Max(1, options.GetValueInt32(nameof(PlateSolvePlusSettings.AfStepsIn), 4));
+                s.AfSettleTimeMs = Math.Max(0, options.GetValueInt32(nameof(PlateSolvePlusSettings.AfSettleTimeMs), 400));
+                s.AfBacklashSteps = Math.Max(0, options.GetValueInt32(nameof(PlateSolvePlusSettings.AfBacklashSteps), 0));
+
+                // BacklashMode stored as int
+                var afModeInt = options.GetValueInt32(nameof(PlateSolvePlusSettings.AfBacklashMode), (int)BacklashMode.OvershootReturn);
+                s.AfBacklashMode = (BacklashMode)Math.Max(0, Math.Min(2, afModeInt));
+
+                s.AfTimeoutSeconds = Math.Max(1, options.GetValueInt32(nameof(PlateSolvePlusSettings.AfTimeoutSeconds), 180));
 
                 // Offset quaternion
                 s.RotationQw = options.GetValueDouble(nameof(PlateSolvePlusSettings.RotationQw), 1.0);
@@ -341,7 +386,6 @@ public static class PlateSolvePlusSettingsBus {
             }
         }
 
-
         public bool IsRotationMode {
             get => Settings.OffsetMode == OffsetMode.Rotation;
             set {
@@ -364,8 +408,7 @@ public static class PlateSolvePlusSettingsBus {
             }
         }
 
-
-        private void PersistSingle(string propertyName) {
+        void PersistSingle(string propertyName) {
             switch (propertyName) {
 
                 // Capture
@@ -402,6 +445,7 @@ public static class PlateSolvePlusSettingsBus {
                 case nameof(PlateSolvePlusSettings.ApiEnabled):
                     options.SetValueBoolean(propertyName, Settings.ApiEnabled);
                     break;
+
                 case nameof(PlateSolvePlusSettings.ApiPort):
                     options.SetValueInt32(propertyName, Settings.ApiPort);
                     break;
@@ -416,6 +460,30 @@ public static class PlateSolvePlusSettingsBus {
                 case nameof(PlateSolvePlusSettings.AFBlock):
                     options.SetValueBoolean(propertyName, Settings.AFBlock);
                     break;
+
+                // OAG Autofocus
+                case nameof(PlateSolvePlusSettings.AfExposureSeconds):
+                    options.SetValueDouble(propertyName, Settings.AfExposureSeconds); break;
+                case nameof(PlateSolvePlusSettings.AfGain):
+                    options.SetValueInt32(propertyName, Settings.AfGain); break;
+                case nameof(PlateSolvePlusSettings.AfBinX):
+                    options.SetValueInt32(propertyName, Settings.AfBinX); break;
+                case nameof(PlateSolvePlusSettings.AfBinY):
+                    options.SetValueInt32(propertyName, Settings.AfBinY); break;
+                case nameof(PlateSolvePlusSettings.AfStepSize):
+                    options.SetValueInt32(propertyName, Settings.AfStepSize); break;
+                case nameof(PlateSolvePlusSettings.AfStepsOut):
+                    options.SetValueInt32(propertyName, Settings.AfStepsOut); break;
+                case nameof(PlateSolvePlusSettings.AfStepsIn):
+                    options.SetValueInt32(propertyName, Settings.AfStepsIn); break;
+                case nameof(PlateSolvePlusSettings.AfSettleTimeMs):
+                    options.SetValueInt32(propertyName, Settings.AfSettleTimeMs); break;
+                case nameof(PlateSolvePlusSettings.AfBacklashSteps):
+                    options.SetValueInt32(propertyName, Settings.AfBacklashSteps); break;
+                case nameof(PlateSolvePlusSettings.AfBacklashMode):
+                    options.SetValueInt32(propertyName, (int)Settings.AfBacklashMode); break;
+                case nameof(PlateSolvePlusSettings.AfTimeoutSeconds):
+                    options.SetValueInt32(propertyName, Settings.AfTimeoutSeconds); break;
 
                 // Offset enabled + arcsec
                 case nameof(PlateSolvePlusSettings.OffsetEnabled):
@@ -471,6 +539,25 @@ public static class PlateSolvePlusSettingsBus {
                 nameof(PlateSolvePlusSettings.CenteringThresholdArcmin) => Settings.CenteringThresholdArcmin,
                 nameof(PlateSolvePlusSettings.CenteringMaxAttempts) => Settings.CenteringMaxAttempts,
 
+                nameof(PlateSolvePlusSettings.ApiEnabled) => Settings.ApiEnabled,
+                nameof(PlateSolvePlusSettings.ApiPort) => Settings.ApiPort,
+                nameof(PlateSolvePlusSettings.ApiRequireToken) => Settings.ApiRequireToken,
+                nameof(PlateSolvePlusSettings.ApiToken) => Settings.ApiToken,
+
+                nameof(PlateSolvePlusSettings.AFBlock) => Settings.AFBlock,
+
+                nameof(PlateSolvePlusSettings.AfExposureSeconds) => Settings.AfExposureSeconds,
+                nameof(PlateSolvePlusSettings.AfGain) => Settings.AfGain,
+                nameof(PlateSolvePlusSettings.AfBinX) => Settings.AfBinX,
+                nameof(PlateSolvePlusSettings.AfBinY) => Settings.AfBinY,
+                nameof(PlateSolvePlusSettings.AfStepSize) => Settings.AfStepSize,
+                nameof(PlateSolvePlusSettings.AfStepsOut) => Settings.AfStepsOut,
+                nameof(PlateSolvePlusSettings.AfStepsIn) => Settings.AfStepsIn,
+                nameof(PlateSolvePlusSettings.AfSettleTimeMs) => Settings.AfSettleTimeMs,
+                nameof(PlateSolvePlusSettings.AfBacklashSteps) => Settings.AfBacklashSteps,
+                nameof(PlateSolvePlusSettings.AfBacklashMode) => Settings.AfBacklashMode,
+                nameof(PlateSolvePlusSettings.AfTimeoutSeconds) => Settings.AfTimeoutSeconds,
+
                 nameof(PlateSolvePlusSettings.OffsetEnabled) => Settings.OffsetEnabled,
                 nameof(PlateSolvePlusSettings.OffsetRaArcsec) => Settings.OffsetRaArcsec,
                 nameof(PlateSolvePlusSettings.OffsetDecArcsec) => Settings.OffsetDecArcsec,
@@ -485,21 +572,14 @@ public static class PlateSolvePlusSettingsBus {
                 nameof(PlateSolvePlusSettings.OffsetMode) => Settings.OffsetMode,
                 nameof(PlateSolvePlusSettings.OffsetModeInt) => Settings.OffsetModeInt,
 
-                nameof(PlateSolvePlusSettings.ApiEnabled) => Settings.ApiEnabled,
-                nameof(PlateSolvePlusSettings.ApiPort) => Settings.ApiPort,
-                nameof(PlateSolvePlusSettings.ApiRequireToken) => Settings.ApiRequireToken,
-                nameof(PlateSolvePlusSettings.ApiToken) => Settings.ApiToken,
-
-                nameof(PlateSolvePlusSettings.AFBlock) => Settings.AFBlock,
-
                 _ => null
             };
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;
-        protected void RaisePropertyChanged([CallerMemberName] string? propertyName = null) {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 
+        private void RaisePropertyChanged([CallerMemberName] string? name = null) {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
         }
     }
 }

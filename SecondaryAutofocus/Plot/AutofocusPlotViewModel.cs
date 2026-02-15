@@ -27,7 +27,7 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Plot {
         }
 
         public AutofocusPlotViewModel() {
-            Model = new PlotModel { Title = "Secondary Autofocus" };
+            Model = new PlotModel { Title = "OAG Autofocus" };
 
             Model.Axes.Add(new LinearAxis {
                 Position = AxisPosition.Bottom,

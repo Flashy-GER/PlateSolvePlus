@@ -1,4 +1,5 @@
-﻿using NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Models;
+﻿using NINA.Core.Utility;
+using NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Models;
 using NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Plot;
 using NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.State;
 using System;
@@ -64,48 +65,32 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
             try { _internalCts?.Cancel(); } catch { }
         }
 
-        public async Task RunAsync(
-            PlateSolvePlusSettings.SecondaryAutofocusSettings settings,
-            SecondaryAutofocusRunState runState,
-            CancellationToken token) {
-            if (settings == null) throw new ArgumentNullException(nameof(settings));
-            if (runState == null) throw new ArgumentNullException(nameof(runState));
-
-            // Map plugin settings -> model settings (robust via reflection)
-            var model = new SecondaryAutofocusSettings();
-
-            var srcType = settings.GetType();
-            var dstType = typeof(SecondaryAutofocusSettings);
-
-            foreach (var dp in dstType.GetProperties(BindingFlags.Public | BindingFlags.Instance)) {
-                if (!dp.CanWrite) continue;
-
-                var sp = srcType.GetProperty(dp.Name, BindingFlags.Public | BindingFlags.Instance);
-                if (sp == null || !sp.CanRead) continue;
-
-                if (!dp.PropertyType.IsAssignableFrom(sp.PropertyType)) continue;
-
-                try {
-                    dp.SetValue(model, sp.GetValue(settings));
-                } catch {
-                    // ignore mapping errors -> defaults stay
-                }
-            }
-
-            // Call the real autofocus implementation
-            await RunAsync(model, runState, token).ConfigureAwait(false);
-        }
-
-
         public async Task<SecondaryAutofocusResult> RunAsync(
             SecondaryAutofocusSettings settings,
             SecondaryAutofocusRunState state,
-            CancellationToken ct) {
+            CancellationToken token) {
+
+            if (settings == null) throw new ArgumentNullException(nameof(settings));
+            if (state == null) throw new ArgumentNullException(nameof(state));
 
             Debug.WriteLine("### PSP AF: RunAsync ENTERED ###");
+            Logger.Debug($"[PlateSolvePlus] AF Settings instance hash: {settings.GetHashCode()}");
+            Logger.Debug($"[PlateSolvePlus] Secondary AF Settings:" +
+                $" Exposure={settings.ExposureSeconds}s" +
+                $" Gain={settings.Gain}" +
+                $" Bin={settings.BinX}x{settings.BinY}" +
+                $" StepSize={settings.StepSize}" +
+                $" StepsOut={settings.StepsOut}" +
+                $" StepsIn={settings.StepsIn}" +
+                $" Settle={settings.SettleTimeMs}ms" +
+                $" BacklashSteps={settings.BacklashSteps}" +
+                $" BacklashMode={settings.BacklashMode}" +
+                $" MinStars={settings.MinStars}" +
+                $" MaxStars={settings.MaxStars}" +
+                $" Timeout={settings.TimeoutSeconds}s");
 
-            await _runLock.WaitAsync(ct).ConfigureAwait(false);
-            _internalCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            await _runLock.WaitAsync(token).ConfigureAwait(false);
+            _internalCts = CancellationTokenSource.CreateLinkedTokenSource(token);
             _disconnectReason = null;
             var connectionSubscriptions = new List<IDisposable>();
             var autofocusCompleted = false;
@@ -384,7 +369,7 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
             return list.Distinct().ToList();
         }
 
-        private async Task MoveWithBacklashAsync(int targetPos, SecondaryAutofocusSettings s, CancellationToken ct) {
+        private async Task MoveWithBacklashAsync(int targetPos,SecondaryAutofocusSettings s, CancellationToken ct) {
             Debug.WriteLine($"### PSP AF: ABOUT TO MOVE FOCUSER to {targetPos} ###");
 
             // --- NEW: never allow invalid positions (prevents "move to -1") ---

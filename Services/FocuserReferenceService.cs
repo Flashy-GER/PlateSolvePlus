@@ -2,7 +2,6 @@
 using System.ComponentModel.Composition;
 using System.Linq;
 using System.Reflection;
-using NINA.Core.Model;
 using NINA.Core.Utility;
 using NINA.Equipment.Equipment.MyFocuser;
 using NINA.Equipment.Interfaces.Mediator;
@@ -34,9 +33,9 @@ namespace NINA.Plugins.PlateSolvePlus.Services {
                     // Your dump proves this exists:
                     // DeviceMediator<..>.RegisterConsumer(IFocuserConsumer)
                     InvokeConsumerMethod(_mediator, "RegisterConsumer", this);
-                    Logger.Info("[PlateSolvePlus] FocuserReferenceService registered as IFocuserConsumer.");
+                    Logger.Debug("[PlateSolvePlus] FocuserReferenceService registered as IFocuserConsumer.");
                 } else {
-                    Logger.Info("[PlateSolvePlus] FocuserReferenceService mediator cleared.");
+                    Logger.Debug("[PlateSolvePlus] FocuserReferenceService mediator cleared.");
                 }
 
                 // initial refresh
@@ -66,7 +65,7 @@ namespace NINA.Plugins.PlateSolvePlus.Services {
         // This is the crucial callback for live updates (comes from FocuserVM -> focuserMediator.Broadcast(FocuserInfo))
         public void UpdateDeviceInfo(FocuserInfo info) {
             _last = info ?? new FocuserInfo();
-            Logger.Info($"[PlateSolvePlus] UpdateDeviceInfo received: this={GetHashCode()} Connected={_last.Connected} Pos={_last.Position}");
+            Logger.Debug($"[PlateSolvePlus] UpdateDeviceInfo received: this={GetHashCode()} Connected={_last.Connected} Pos={_last.Position}");
             ReferenceUpdated?.Invoke(this, EventArgs.Empty);
             Position = _last.Position;
             IsConnected = _last.Connected;

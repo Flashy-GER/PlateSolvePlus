@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Models;
 
 namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
     /// <summary>
@@ -57,7 +56,7 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
                 HfrMetric.Mean =>
                     hfrs.Average(),
 
-                HfrMetric.BestNMedian =>
+                HfrMetric.BestMedian =>
                     Median(
                         hfrs
                             .OrderBy(v => v)
