@@ -1,5 +1,22 @@
 ﻿# PlateSolvePlus Changelog
 
+## 1.0.2.0
+## ✨ Features, Improvements & Bug Fixes
+
+### Secondary Camera Autofocus
+- Fully integrated autofocus workflow for secondary cameras
+- Support for backlash strategies (Overshoot / One-Way-Approach)
+- Proper status and progress feedback during and after autofocus runs
+
+### Bug Fixes
+- fix autofoucs settings not being applied correctly
+- UI may now be updated during autofocus runs (status, progress, button states)
+- Sequencer imporments
+
+### Improved Sequencer Integration
+- Targets are only sent to the sequencer when a sequence is present and loaded
+- Prevents errors such as “no sequence available”
+
 ## 1.0.1.2 (BETA 2)
 ## ✨ Features, Improvements & Bug Fixes
 

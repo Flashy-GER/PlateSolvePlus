@@ -7,13 +7,13 @@ using System.Runtime.InteropServices;
 
 // [MANDATORY] The assembly versioning
 //Should be incremented for each new release build of a plugin
-[assembly: AssemblyVersion("1.0.1.2")]
-[assembly: AssemblyFileVersion("1.0.1.2")]
+[assembly: AssemblyVersion("1.0.2.0")]
+[assembly: AssemblyFileVersion("1.0.2.0")]
 
 // [MANDATORY] The name of your plugin
 [assembly: AssemblyTitle("PlateSolvePlus")]
 // [MANDATORY] A short description of your plugin
-[assembly: AssemblyDescription("Enables plate solving via alternative camera and focal length")]
+[assembly: AssemblyDescription("Enables plate solving and optional autofocus via alternative camera and focal length")]
 
 // The following attributes are not required for the plugin per se, but are required by the official manifest meta data
 
@@ -53,7 +53,9 @@ using System.Runtime.InteropServices;
 //[Optional] An in-depth description of your plugin
 [assembly: AssemblyMetadata(
     "LongDescription",
-    @"Beta Release 1.0.1.2 introduces a full Secondary Camera Autofocus with backlash handling, improved Sequencer integration, enhanced Alpaca camera compatibility and capture robustness, plus multiple UX improvements and critical autofocus bug fixes."
+    @"PlateSolvePlus extends N.I.N.A. with advanced Secondary Camera support, integrated plate solving workflows, offset calibration between main and guide optics, and a powerful Secondary Autofocus system with backlash handling. 
+
+The plugin enhances Sequencer integration, improves Alpaca/ASCOM compatibility, and provides robust capture and solving routines. Designed for complex imaging setups, PlateSolvePlus enables precise target alignment, automated centering, and reliable OAG focusing — all directly within the N.I.N.A. imaging workflow."
 )]
 
 // Setting ComVisible to false makes the types in this assembly not visible
