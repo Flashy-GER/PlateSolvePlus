@@ -1,4 +1,4 @@
-﻿# PlateSolvePlus
+# PlateSolvePlus
 
 **PlateSolvePlus** ist ein Plugin für  
 [**N.I.N.A. (Nighttime Imaging ‘N’ Astronomy)**](https://nighttime-imaging.eu/),  
@@ -87,7 +87,12 @@ Da Guide- und Hauptteleskop meist **nicht exakt parallel** montiert sind, nutzt 
 
 > 💡 Offset muss **einmal kalibriert** werden und wird danach automatisch angewendet.
 
----
+PlateSolvePlus bietet zwei zentrale Aktionen:
+
+#### ▶️ Capture + Sync
+- Guide-Solve durchführen
+- Zielkoordinate auf Hauptteleskop **synchronisieren**
+- Fallback: Offset-basierte Korrektur, wenn Sync nicht möglich ist
 
 ## 🎯 Bedienung im Imaging-Tab
 
