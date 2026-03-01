@@ -7,13 +7,13 @@ using System.Runtime.InteropServices;
 
 // [MANDATORY] The assembly versioning
 //Should be incremented for each new release build of a plugin
-[assembly: AssemblyVersion("1.0.0.1")]
-[assembly: AssemblyFileVersion("1.0.0.1")]
+[assembly: AssemblyVersion("1.0.2.0")]
+[assembly: AssemblyFileVersion("1.0.2.0")]
 
 // [MANDATORY] The name of your plugin
 [assembly: AssemblyTitle("PlateSolvePlus")]
 // [MANDATORY] A short description of your plugin
-[assembly: AssemblyDescription("Enables plate solving via alternative camera and focal length")]
+[assembly: AssemblyDescription("Enables plate solving and optional autofocus via alternative camera and focal length")]
 
 // The following attributes are not required for the plugin per se, but are required by the official manifest meta data
 
@@ -39,19 +39,24 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyMetadata("Homepage", "https://github.com/Flashy-GER/PlateSolvePlus")]
 
 //[Optional] Common tags that quickly describe your plugin
-[assembly: AssemblyMetadata("Tags", "")]
+[assembly: AssemblyMetadata("Tags", "Platesolve,secondCamera,Offset,Autofocus")]
 
 //[Optional] A link that will show a log of all changes in between your plugin's versions
-[assembly: AssemblyMetadata("ChangelogURL", "https://github.com/Flashy-GER/PlateSolvePlus/CHANGELOG.md")]
+[assembly: AssemblyMetadata("ChangelogURL", "https://github.com/Flashy-GER/PlateSolvePlus/blob/dev/CHANGELOG.md")]
 
 //[Optional] The url to a featured logo that will be displayed in the plugin list next to the name
-[assembly: AssemblyMetadata("FeaturedImageURL", "")]
+[assembly: AssemblyMetadata("FeaturedImageURL", "https://github.com/Flashy-GER/PlateSolvePlus/blob/dev/Docu/Pics/Icon_Platsolveplus.png?raw=true")]
 //[Optional] A url to an example screenshot of your plugin in action
 [assembly: AssemblyMetadata("ScreenshotURL", "")]
 //[Optional] An additional url to an example example screenshot of your plugin in action
 [assembly: AssemblyMetadata("AltScreenshotURL", "")]
 //[Optional] An in-depth description of your plugin
-[assembly: AssemblyMetadata("LongDescription", @"The plugin allows you to define separate settings for focal length or camera settings, independent of the defined telescope configuration. It also allows you to define an additional camera to be used for plate solving.")]
+[assembly: AssemblyMetadata(
+    "LongDescription",
+    @"PlateSolvePlus extends N.I.N.A. with advanced Secondary Camera support, integrated plate solving workflows, offset calibration between main and guide optics, and a powerful Secondary Autofocus system with backlash handling. 
+
+The plugin enhances Sequencer integration, improves Alpaca/ASCOM compatibility, and provides robust capture and solving routines. Designed for complex imaging setups, PlateSolvePlus enables precise target alignment, automated centering, and reliable OAG focusing — all directly within the N.I.N.A. imaging workflow."
+)]
 
 // Setting ComVisible to false makes the types in this assembly not visible
 // to COM components.  If you need to access a type in this assembly from

@@ -12,7 +12,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusTestCategory {
+namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusSequenceItems {
     /// <summary>
     /// This Class shows the basic principle on how to add a new Sequence Trigger to the N.I.N.A. sequencer via the plugin interface
     /// For ease of use this class inherits the abstract SequenceTrigger which already handles most of the running logic, like logging, exception handling etc.
@@ -24,11 +24,11 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusTestCategory {
     ///
     /// If the item has some preconditions that should be validated, it shall also extend the IValidatable interface and add the validation logic accordingly.
     /// </summary>
-    [ExportMetadata("Name", "Plugin Template Trigger")]
-    [ExportMetadata("Description", "This trigger will show a notification when a random generated number is even on evaluation")]
-    [ExportMetadata("Icon", "Plugin_Test_SVG")]
-    [ExportMetadata("Category", "PlateSolvePlus")]
-    [Export(typeof(ISequenceTrigger))]
+ //   [ExportMetadata("Name", "Plugin Template Trigger")]
+ //   [ExportMetadata("Description", "This trigger will show a notification when a random generated number is even on evaluation")]
+ //   [ExportMetadata("Icon", "Plugin_Test_SVG")]
+ //   [ExportMetadata("Category", "PlateSolvePlus")]
+ //   [Export(typeof(ISequenceTrigger))]
     [JsonObject(MemberSerialization.OptIn)]
     public class PlatesolveplusTrigger : SequenceTrigger {
     /// <summary>

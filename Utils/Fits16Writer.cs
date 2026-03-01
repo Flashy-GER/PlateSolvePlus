@@ -2,7 +2,7 @@
 using System.IO;
 using System.Text;
 
-namespace NINA.Plugins.PlateSolvePlus.SecondaryCamera {
+namespace NINA.Plugins.PlateSolvePlus.Utils {
     /// <summary>
     /// Minimal FITS writer for 16-bit monochrome frames (writes BITPIX=16).
     /// Stores unsigned 0..65535 using BZERO=32768, BSCALE=1 and signed data (value-32768).

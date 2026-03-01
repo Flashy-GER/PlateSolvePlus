@@ -1,0 +1,40 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:seq="clr-namespace:NINA.Plugins.PlateSolvePlus.PlatesolveplusSequenceItems"
+                    xmlns:view="clr-namespace:NINA.View.Sequencer;assembly=NINA.Sequencer">
+
+    <DataTemplate DataType="{x:Type seq:PlatesolveplusWaitUntilReadyInstruction}">
+        <view:SequenceBlockView>
+            <view:SequenceBlockView.SequenceItemContent>
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="170"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="170"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.ColumnSpan="4"
+                               Text="Wait until PlateSolvePlus is ready (imports ready / not busy)."
+                               Opacity="0.75"
+                               Margin="0,0,0,10"
+                               TextWrapping="Wrap"/>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Timeout (s)" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBox   Grid.Row="1" Grid.Column="1" Text="{Binding TimeoutSeconds, UpdateSourceTrigger=LostFocus}" MinWidth="60" Margin="0,0,14,0"/>
+
+                    <TextBlock Grid.Row="1" Grid.Column="2" Text="Poll interval (ms)" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBox   Grid.Row="1" Grid.Column="3" Text="{Binding PollIntervalMs, UpdateSourceTrigger=LostFocus}" MinWidth="60"/>
+
+                </Grid>
+
+            </view:SequenceBlockView.SequenceItemContent>
+        </view:SequenceBlockView>
+    </DataTemplate>
+
+</ResourceDictionary>

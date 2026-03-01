@@ -1,0 +1,91 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:seq="clr-namespace:NINA.Plugins.PlateSolvePlus.PlatesolveplusSequenceItems"
+    xmlns:view="clr-namespace:NINA.View.Sequencer;assembly=NINA.Sequencer">
+
+    <DataTemplate DataType="{x:Type seq:PlatesolveplusSlewToTargetAndCenterInstruction}">
+        <view:SequenceBlockView>
+            <view:SequenceBlockView.SequenceItemContent>
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="170" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="170" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock
+                        Grid.Row="0"
+                        Grid.ColumnSpan="4"
+                        Margin="0,0,0,10"
+                        Opacity="0.75"
+                        Text="Slew to target and center using PlateSolvePlus."
+                        TextWrapping="Wrap" />
+                    <TextBlock
+                        Grid.Row="1"
+                        Grid.Column="0"
+                        Margin="0,0,8,6"
+                        Text="Use Sequencer Target (on / off)" />
+                    <CheckBox
+                        Grid.Row="1"
+                        Grid.ColumnSpan="4"
+                        Margin="0,0,0,8"
+                        Content="Use sequence target (recommended)"
+                        IsChecked="{Binding UseSequenceTarget, UpdateSourceTrigger=PropertyChanged}"
+                        ToolTip="Uses the target set in the Sequencer Target Area." />
+
+                    <TextBlock
+                        Grid.Row="2"
+                        Grid.Column="0"
+                        Margin="0,0,8,6"
+                        VerticalAlignment="Center"
+                        Text="Target RA (deg)" />
+                    <TextBox
+                        Grid.Row="2"
+                        Grid.Column="1"
+                        MinWidth="80"
+                        Margin="0,0,14,6"
+                        IsEnabled="{Binding IsManualTargetEnabled}"
+                        Text="{Binding TargetRaDeg, UpdateSourceTrigger=LostFocus}" />
+
+                    <TextBlock
+                        Grid.Row="2"
+                        Grid.Column="2"
+                        Margin="0,0,8,6"
+                        VerticalAlignment="Center"
+                        Text="Target Dec (deg)" />
+                    <TextBox
+                        Grid.Row="2"
+                        Grid.Column="3"
+                        MinWidth="80"
+                        Margin="0,0,0,6"
+                        IsEnabled="{Binding IsManualTargetEnabled}"
+                        Text="{Binding TargetDecDeg, UpdateSourceTrigger=LostFocus}" />
+
+                    <TextBlock
+                        Grid.Row="1"
+                        Grid.Column="0"
+                        Margin="0,0,8,6"
+                        Text="Slew to target coordinates first, then plate solve and center." />
+                    <CheckBox
+                        Grid.Row="3"
+                        Grid.ColumnSpan="4"
+                        Content="Slew + center (instead of sync-only)"
+                        IsChecked="{Binding UseSlewInsteadOfSync, UpdateSourceTrigger=PropertyChanged}"
+                        ToolTip="Slew to target coordinates first, then plate solve and center." />
+
+                </Grid>
+
+            </view:SequenceBlockView.SequenceItemContent>
+        </view:SequenceBlockView>
+    </DataTemplate>
+
+</ResourceDictionary>

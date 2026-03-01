@@ -1,0 +1,195 @@
+name: PlateSolvePlus Release
+
+on:
+  push:
+    tags:
+      - '*.*.*.*'   # e.g. 1.0.0.3
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+env:
+  PLUGIN_NAME: "PlateSolvePlus"
+  PROJECT_PATH: "PlateSolvePlus.csproj"
+  OUTPUT_DIR: "bin/Release/net8.0-windows"
+  MAIN_DLL: "PlateSolvePlus.dll"
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Sync AssemblyInfo version + metadata URLs to tag
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $p = "Properties/AssemblyInfo.cs"
+          if (!(Test-Path $p)) { throw "Missing $p" }
+
+          $c = Get-Content $p -Raw
+
+          # --- Versions: must match tag exactly ---
+          $c = $c -replace 'AssemblyVersion\(".*?"\)', "AssemblyVersion(`"$tag`")"
+          $c = $c -replace 'AssemblyFileVersion\(".*?"\)', "AssemblyFileVersion(`"$tag`")"
+
+          # --- Metadata URLs: pin to this tag (instead of dev/main) ---
+          # ChangelogURL: .../blob/<branch>/CHANGELOG.md  -> .../blob/<tag>/CHANGELOG.md
+          $c = $c -replace '(AssemblyMetadata\("ChangelogURL",\s*")https://github\.com/([^"]+)/blob/[^/]+/CHANGELOG\.md(")',
+                           "`$1https://github.com/`$2/blob/$tag/CHANGELOG.md`$3"
+
+          # FeaturedImageURL: .../blob/<branch>/Docu/Pics/<file>?raw=true -> .../blob/<tag>/Docu/Pics/<file>?raw=true
+          $c = $c -replace '(AssemblyMetadata\("FeaturedImageURL",\s*")https://github\.com/([^"]+)/blob/[^/]+/Docu/Pics/([^"?]+)(\?raw=true)?(")',
+                           "`$1https://github.com/`$2/blob/$tag/Docu/Pics/`$3`$4`$5"
+
+          Set-Content -Path $p -Value $c -Encoding UTF8
+
+          Write-Host "AssemblyInfo patched:"
+          Write-Host "- Version -> $tag"
+          Write-Host "- ChangelogURL -> blob/$tag/CHANGELOG.md"
+          Write-Host "- FeaturedImageURL -> blob/$tag/Docu/Pics/..."
+
+
+      - name: Build (Release)
+        shell: pwsh
+        run: |
+          dotnet --info
+          dotnet restore "${{ env.PROJECT_PATH }}"
+          dotnet build "${{ env.PROJECT_PATH }}" -c Release -p:PostBuildEvent=
+
+      - name: Prepare package folder
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "packages/${{ env.PLUGIN_NAME }}" | Out-Null
+
+          $out = "${{ env.OUTPUT_DIR }}"
+          if (!(Test-Path $out)) { throw "Output dir not found: $out" }
+
+          # main dll
+          $main = Join-Path $out "${{ env.MAIN_DLL }}"
+          if (!(Test-Path $main)) { throw "Main DLL not found: $main" }
+          Copy-Item $main "packages/${{ env.PLUGIN_NAME }}/" -Force
+
+          # pdb optional
+          $pdb = [System.IO.Path]::ChangeExtension($main, ".pdb")
+          if (Test-Path $pdb) { Copy-Item $pdb "packages/${{ env.PLUGIN_NAME }}/" -Force }
+
+          # dependencies (as per your PostBuild target)
+          foreach ($d in @("EmbedIO.dll","Swan.Lite.dll")) {
+            $p = Join-Path $out $d
+            if (Test-Path $p) { Copy-Item $p "packages/${{ env.PLUGIN_NAME }}/" -Force }
+          }
+
+          # optional docs
+          foreach ($f in @("README.md","CHANGELOG.md","LICENSE.txt")) {
+            if (Test-Path $f) { Copy-Item $f "packages/${{ env.PLUGIN_NAME }}/" -Force }
+          }
+
+          Write-Host "Packaged files:"
+          Get-ChildItem "packages/${{ env.PLUGIN_NAME }}" | Format-Table Name, Length
+
+      - name: Verify assembly version
+        shell: pwsh
+        run: |
+          $dll = "${{ env.OUTPUT_DIR }}/${{ env.MAIN_DLL }}"
+          if (!(Test-Path $dll)) { throw "DLL missing: $dll" }
+          $an = [System.Reflection.AssemblyName]::GetAssemblyName($dll)
+          Write-Host "Built assembly version: $($an.Version)"
+          if ("$($an.Version)" -ne "${{ github.ref_name }}") {
+            throw "Assembly version ($($an.Version)) does not match tag (${{ github.ref_name }})"
+          }
+
+      - name: Create archive + manifest
+        shell: pwsh
+        run: |
+          curl -LO "https://raw.githubusercontent.com/isbeorn/nina.plugin.manifests/refs/heads/main/tools/CreateManifest.ps1?raw=true"
+
+          pwsh .\CreateManifest.ps1 `
+            -file "packages/${{ env.PLUGIN_NAME }}/${{ env.MAIN_DLL }}" `
+            -installerUrl "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/${{ env.PLUGIN_NAME }}.${{ github.ref_name }}.zip" `
+            -createArchive `
+            -includeAll `
+            -appendVersionToArchive
+
+          # Normalize output names so release assets are predictable
+          $zip = Get-ChildItem -Filter "*.zip" | Select-Object -First 1
+          if (-not $zip) { throw "No zip produced by CreateManifest.ps1" }
+          Rename-Item -Path $zip.FullName -NewName "${{ env.PLUGIN_NAME }}.${{ github.ref_name }}.zip" -Force
+
+          if (!(Test-Path "manifest.json")) { throw "manifest.json not produced by CreateManifest.ps1" }
+          Rename-Item -Path "manifest.json" -NewName "${{ env.PLUGIN_NAME }}.${{ github.ref_name }}.manifest.json" -Force
+
+          Write-Host "Release assets:"
+          Get-ChildItem "${{ env.PLUGIN_NAME }}.${{ github.ref_name }}.zip","${{ env.PLUGIN_NAME }}.${{ github.ref_name }}.manifest.json" | Format-Table Name, Length
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: PlateSolvePlus ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          files: |
+            ${{ env.PLUGIN_NAME }}.${{ github.ref_name }}.zip
+            ${{ env.PLUGIN_NAME }}.${{ github.ref_name }}.manifest.json
+
+      - name: Upload manifest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-manifest
+          path: ${{ env.PLUGIN_NAME }}.${{ github.ref_name }}.manifest.json
+
+
+  publish-manifest:
+    runs-on: ubuntu-latest
+    needs: build-and-release
+
+    env:
+      MANIFEST_PATH: "p/PlateSolvePlus/3.0.0"
+
+    steps:
+      - name: Download manifest artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: plugin-manifest
+          path: manifest_artifact
+
+      - name: Clone your fork of nina.plugin.manifests
+        run: |
+          git clone https://x-access-token:${{ secrets.PAT }}@github.com/Flashy-GER/nina.plugin.manifests.git
+          cd nina.plugin.manifests
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create branch + copy manifest
+        run: |
+          TAG="${{ github.ref_name }}"
+          BRANCH="platesolveplus/${TAG}"
+
+          cd nina.plugin.manifests
+          git checkout -b "$BRANCH"
+
+          mkdir -p "manifests/${{ env.MANIFEST_PATH }}"
+          cp ../manifest_artifact/*.manifest.json \
+             "manifests/${{ env.MANIFEST_PATH }}/manifest.${TAG}.json"
+
+          git add .
+          git commit -m "Add PlateSolvePlus manifest ${TAG}"
+          git push origin "$BRANCH"
+
+      - name: Create PR to upstream
+        run: |
+          TAG="${{ github.ref_name }}"
+          BRANCH="platesolveplus/${TAG}"
+
+          echo "${{ secrets.PAT }}" | gh auth login --with-token
+
+          gh pr create \
+            --title "Add PlateSolvePlus manifest ${TAG}" \
+            --body "Auto-generated manifest for PlateSolvePlus ${TAG} (NINA 3.0.0)." \
+            --head "Flashy-GER:${BRANCH}" \
+            --base main \
+            --repo isbeorn/nina.plugin.manifests
