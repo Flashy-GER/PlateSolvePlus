@@ -4,86 +4,92 @@
     xmlns:seq="clr-namespace:NINA.Plugins.PlateSolvePlus.PlatesolveplusSequenceItems"
     xmlns:view="clr-namespace:NINA.View.Sequencer;assembly=NINA.Sequencer">
 
+    <Style x:Key="SectionCard" TargetType="Border">
+        <Setter Property="Margin" Value="0,0,0,10" />
+        <Setter Property="Padding" Value="12" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderBrush" Value="#22000000" />
+        <Setter Property="Background" Value="#08000000" />
+    </Style>
+
+    <Style x:Key="FieldLabel" TargetType="TextBlock">
+        <Setter Property="Margin" Value="0,0,10,8" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Opacity" Value="0.85" />
+    </Style>
+
+    <Style x:Key="HintText" TargetType="TextBlock">
+        <Setter Property="Opacity" Value="0.72" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
     <DataTemplate DataType="{x:Type seq:PlatesolveplusSlewToTargetAndCenterInstruction}">
         <view:SequenceBlockView>
             <view:SequenceBlockView.SequenceItemContent>
+                <StackPanel>
+                    <TextBlock Margin="0,0,0,12"
+                               Style="{StaticResource HintText}"
+                               Text="Slew to a target and refine the final position with PlateSolvePlus centering. Use the active sequencer target or enter manual coordinates for a one-off move." />
 
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="170" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="170" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
+                    <Border Style="{StaticResource SectionCard}">
+                        <StackPanel>
+                            <TextBlock FontWeight="SemiBold" Text="Target Source" />
+                            <TextBlock Margin="0,4,0,10" Style="{StaticResource HintText}" Text="The sequencer target is the most N.I.N.A.-like option because it follows the target area automatically." />
 
-                    <TextBlock
-                        Grid.Row="0"
-                        Grid.ColumnSpan="4"
-                        Margin="0,0,0,10"
-                        Opacity="0.75"
-                        Text="Slew to target and center using PlateSolvePlus."
-                        TextWrapping="Wrap" />
-                    <TextBlock
-                        Grid.Row="1"
-                        Grid.Column="0"
-                        Margin="0,0,8,6"
-                        Text="Use Sequencer Target (on / off)" />
-                    <CheckBox
-                        Grid.Row="1"
-                        Grid.ColumnSpan="4"
-                        Margin="0,0,0,8"
-                        Content="Use sequence target (recommended)"
-                        IsChecked="{Binding UseSequenceTarget, UpdateSourceTrigger=PropertyChanged}"
-                        ToolTip="Uses the target set in the Sequencer Target Area." />
+                            <CheckBox
+                                Content="Use current sequencer target"
+                                IsChecked="{Binding UseSequenceTarget, UpdateSourceTrigger=PropertyChanged}"
+                                ToolTip="Reads the target coordinates from the N.I.N.A. target area." />
+                        </StackPanel>
+                    </Border>
 
-                    <TextBlock
-                        Grid.Row="2"
-                        Grid.Column="0"
-                        Margin="0,0,8,6"
-                        VerticalAlignment="Center"
-                        Text="Target RA (deg)" />
-                    <TextBox
-                        Grid.Row="2"
-                        Grid.Column="1"
-                        MinWidth="80"
-                        Margin="0,0,14,6"
-                        IsEnabled="{Binding IsManualTargetEnabled}"
-                        Text="{Binding TargetRaDeg, UpdateSourceTrigger=LostFocus}" />
+                    <Border>
+                        <Border.Style>
+                            <Style TargetType="Border" BasedOn="{StaticResource SectionCard}">
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding UseSequenceTarget}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
 
-                    <TextBlock
-                        Grid.Row="2"
-                        Grid.Column="2"
-                        Margin="0,0,8,6"
-                        VerticalAlignment="Center"
-                        Text="Target Dec (deg)" />
-                    <TextBox
-                        Grid.Row="2"
-                        Grid.Column="3"
-                        MinWidth="80"
-                        Margin="0,0,0,6"
-                        IsEnabled="{Binding IsManualTargetEnabled}"
-                        Text="{Binding TargetDecDeg, UpdateSourceTrigger=LostFocus}" />
+                        <StackPanel>
+                            <TextBlock FontWeight="SemiBold" Text="Manual Target" />
+                            <TextBlock Margin="0,4,0,10" Style="{StaticResource HintText}" Text="Enter fallback coordinates in degrees if this step should ignore the active sequencer target." />
 
-                    <TextBlock
-                        Grid.Row="1"
-                        Grid.Column="0"
-                        Margin="0,0,8,6"
-                        Text="Slew to target coordinates first, then plate solve and center." />
-                    <CheckBox
-                        Grid.Row="3"
-                        Grid.ColumnSpan="4"
-                        Content="Slew + center (instead of sync-only)"
-                        IsChecked="{Binding UseSlewInsteadOfSync, UpdateSourceTrigger=PropertyChanged}"
-                        ToolTip="Slew to target coordinates first, then plate solve and center." />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="170" />
+                                    <ColumnDefinition Width="110" />
+                                    <ColumnDefinition Width="24" />
+                                    <ColumnDefinition Width="170" />
+                                    <ColumnDefinition Width="110" />
+                                </Grid.ColumnDefinitions>
 
-                </Grid>
+                                <TextBlock Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Target RA (deg)" />
+                                <TextBox Grid.Column="1" Text="{Binding TargetRaDeg, UpdateSourceTrigger=LostFocus}" />
 
+                                <TextBlock Grid.Column="3" Style="{StaticResource FieldLabel}" Text="Target Dec (deg)" />
+                                <TextBox Grid.Column="4" Text="{Binding TargetDecDeg, UpdateSourceTrigger=LostFocus}" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource SectionCard}">
+                        <StackPanel>
+                            <TextBlock FontWeight="SemiBold" Text="Centering Mode" />
+                            <TextBlock Margin="0,4,0,10" Style="{StaticResource HintText}" Text="Recommended for most sequences: slew to the target first and let PlateSolvePlus finish the centering pass." />
+
+                            <CheckBox
+                                Content="Slew first, then center"
+                                IsChecked="{Binding UseSlewInsteadOfSync, UpdateSourceTrigger=PropertyChanged}"
+                                ToolTip="If disabled, the action behaves more like a sync-only correction." />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
             </view:SequenceBlockView.SequenceItemContent>
         </view:SequenceBlockView>
     </DataTemplate>

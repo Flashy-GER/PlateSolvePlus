@@ -9,6 +9,8 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryCamera {
         Task ConnectAsync(CancellationToken ct);
         Task DisconnectAsync(CancellationToken ct);
 
+        Task<double?> GetPixelSizeUmAsync(CancellationToken ct);
+
         Task<SecondaryCameraFrame> CaptureAsync(
             double exposureSeconds,
             int binX,

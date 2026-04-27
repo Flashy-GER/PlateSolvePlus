@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -58,6 +59,54 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryCamera {
             }
 
             return Task.CompletedTask;
+        }
+
+        public Task<double?> GetPixelSizeUmAsync(CancellationToken ct) {
+            ct.ThrowIfCancellationRequested();
+
+            if (cam == null || !IsConnected)
+                return Task.FromResult<double?>(null);
+
+            var x = TryReadDoubleProperty("PixelSizeX");
+            var y = TryReadDoubleProperty("PixelSizeY");
+
+            if (TryGetValidPixelSize(x, out var xValue) && TryGetValidPixelSize(y, out var yValue))
+                return Task.FromResult<double?>((xValue + yValue) / 2.0);
+
+            if (TryGetValidPixelSize(x, out xValue))
+                return Task.FromResult<double?>(xValue);
+
+            if (TryGetValidPixelSize(y, out yValue))
+                return Task.FromResult<double?>(yValue);
+
+            return Task.FromResult<double?>(null);
+        }
+
+        private double? TryReadDoubleProperty(string propertyName) {
+            try {
+                object? value = propertyName switch {
+                    "PixelSizeX" => cam.PixelSizeX,
+                    "PixelSizeY" => cam.PixelSizeY,
+                    _ => null
+                };
+
+                if (value == null) return null;
+                return Convert.ToDouble(value, CultureInfo.InvariantCulture);
+            } catch {
+                return null;
+            }
+        }
+
+        private static bool IsValidPixelSize(double? value) =>
+            value.HasValue &&
+            !double.IsNaN(value.Value) &&
+            !double.IsInfinity(value.Value) &&
+            value.Value >= 0.1 &&
+            value.Value <= 100.0;
+
+        private static bool TryGetValidPixelSize(double? value, out double pixelSizeUm) {
+            pixelSizeUm = value.GetValueOrDefault();
+            return IsValidPixelSize(value);
         }
 
         public async Task<SecondaryCameraFrame> CaptureAsync(

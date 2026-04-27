@@ -1,0 +1,199 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:psp="clr-namespace:NINA.Plugins.PlateSolvePlus"
+    xmlns:seq="clr-namespace:NINA.Plugins.PlateSolvePlus.PlatesolveplusSequenceItems"
+    xmlns:view="clr-namespace:NINA.View.Sequencer;assembly=NINA.Sequencer">
+
+    <Style x:Key="SectionCard" TargetType="Border">
+        <Setter Property="Margin" Value="0,0,0,10" />
+        <Setter Property="Padding" Value="12" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderBrush" Value="#22000000" />
+        <Setter Property="Background" Value="#08000000" />
+    </Style>
+
+    <Style x:Key="FieldLabel" TargetType="TextBlock">
+        <Setter Property="Margin" Value="0,0,10,8" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Opacity" Value="0.85" />
+    </Style>
+
+    <Style x:Key="HintText" TargetType="TextBlock">
+        <Setter Property="Opacity" Value="0.72" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <DataTemplate DataType="{x:Type seq:PlatesolveplusSecondaryAutofocusInstruction}">
+        <view:SequenceBlockView>
+            <view:SequenceBlockView.SequenceItemContent>
+                <StackPanel>
+                    <TextBlock
+                        Margin="0,0,0,12"
+                        Style="{StaticResource HintText}"
+                        Text="Runs the PlateSolvePlus OAG / secondary-camera autofocus directly inside the N.I.N.A. sequencer." />
+
+                    <Border Style="{StaticResource SectionCard}">
+                        <StackPanel>
+                            <TextBlock FontWeight="SemiBold" Text="Run Setup" />
+                            <TextBlock Margin="0,4,0,10" Style="{StaticResource HintText}" Text="Use your saved PlateSolvePlus autofocus profile or define dedicated values for this sequencer step." />
+
+                            <CheckBox
+                                Content="Use saved PlateSolvePlus autofocus defaults"
+                                IsChecked="{Binding UseStoredSettings, UpdateSourceTrigger=PropertyChanged}"
+                                ToolTip="Uses the autofocus values from the PlateSolvePlus options page." />
+
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="190" />
+                                    <ColumnDefinition Width="110" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Sequence wait timeout (s)" />
+                                <TextBox Grid.Column="1" MinWidth="80" Text="{Binding WaitTimeoutSeconds, UpdateSourceTrigger=LostFocus}" />
+                                <TextBlock Grid.Column="2" Margin="12,0,0,8" Style="{StaticResource HintText}" Text="How long the sequencer waits for the autofocus run to finish before failing the step." />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <Border>
+                        <Border.Style>
+                            <Style TargetType="Border" BasedOn="{StaticResource SectionCard}">
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding UseStoredSettings}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+
+                        <StackPanel>
+                            <TextBlock FontWeight="SemiBold" Text="Capture" />
+                            <TextBlock Margin="0,4,0,10" Style="{StaticResource HintText}" Text="Override the exposure and binning only for this autofocus step." />
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="170" />
+                                    <ColumnDefinition Width="90" />
+                                    <ColumnDefinition Width="24" />
+                                    <ColumnDefinition Width="170" />
+                                    <ColumnDefinition Width="90" />
+                                </Grid.ColumnDefinitions>
+
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Exposure (s)" />
+                                <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding ExposureSeconds, UpdateSourceTrigger=LostFocus}" />
+
+                                <TextBlock Grid.Row="0" Grid.Column="3" Style="{StaticResource FieldLabel}" Text="Gain" />
+                                <TextBox Grid.Row="0" Grid.Column="4" Text="{Binding Gain, UpdateSourceTrigger=LostFocus}" />
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Binning X / Y" />
+                                <StackPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="4" Orientation="Horizontal">
+                                    <TextBox Width="58" Text="{Binding BinX, UpdateSourceTrigger=LostFocus}" />
+                                    <TextBlock Margin="8,0" VerticalAlignment="Center" Text="x" Opacity="0.7" />
+                                    <TextBox Width="58" Text="{Binding BinY, UpdateSourceTrigger=LostFocus}" />
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <Border>
+                        <Border.Style>
+                            <Style TargetType="Border" BasedOn="{StaticResource SectionCard}">
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding UseStoredSettings}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+
+                        <StackPanel>
+                            <TextBlock FontWeight="SemiBold" Text="Focus Sweep" />
+                            <TextBlock Margin="0,4,0,10" Style="{StaticResource HintText}" Text="Matches the familiar N.I.N.A.-style autofocus sweep: step size, outward samples, inward samples and settle delay." />
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="170" />
+                                    <ColumnDefinition Width="90" />
+                                    <ColumnDefinition Width="24" />
+                                    <ColumnDefinition Width="170" />
+                                    <ColumnDefinition Width="90" />
+                                </Grid.ColumnDefinitions>
+
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Step size" />
+                                <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding StepSize, UpdateSourceTrigger=LostFocus}" />
+
+                                <TextBlock Grid.Row="0" Grid.Column="3" Style="{StaticResource FieldLabel}" Text="Settle time (ms)" />
+                                <TextBox Grid.Row="0" Grid.Column="4" Text="{Binding SettleTimeMs, UpdateSourceTrigger=LostFocus}" />
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Steps out / in" />
+                                <StackPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="4" Orientation="Horizontal">
+                                    <TextBox Width="58" Text="{Binding StepsOut, UpdateSourceTrigger=LostFocus}" />
+                                    <TextBlock Margin="8,0" VerticalAlignment="Center" Text="/" Opacity="0.7" />
+                                    <TextBox Width="58" Text="{Binding StepsIn, UpdateSourceTrigger=LostFocus}" />
+                                </StackPanel>
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Autofocus timeout (s)" />
+                                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding AutofocusTimeoutSeconds, UpdateSourceTrigger=LostFocus}" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <Border>
+                        <Border.Style>
+                            <Style TargetType="Border" BasedOn="{StaticResource SectionCard}">
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding UseStoredSettings}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+
+                        <StackPanel>
+                            <TextBlock FontWeight="SemiBold" Text="Backlash" />
+                            <TextBlock Margin="0,4,0,10" Style="{StaticResource HintText}" Text="Optional backlash compensation for focusers that need an overshoot or one-way approach." />
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="170" />
+                                    <ColumnDefinition Width="140" />
+                                    <ColumnDefinition Width="24" />
+                                    <ColumnDefinition Width="170" />
+                                    <ColumnDefinition Width="170" />
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Backlash steps" />
+                                <TextBox Grid.Column="1" Text="{Binding BacklashSteps, UpdateSourceTrigger=LostFocus}" />
+
+                                <TextBlock Grid.Column="3" Style="{StaticResource FieldLabel}" Text="Mode" />
+                                <ComboBox Grid.Column="4" SelectedValue="{Binding BacklashMode, UpdateSourceTrigger=PropertyChanged}" SelectedValuePath="Tag">
+                                    <ComboBoxItem Content="None" Tag="{x:Static psp:BacklashMode.None}" />
+                                    <ComboBoxItem Content="Overshoot + Return" Tag="{x:Static psp:BacklashMode.OvershootReturn}" />
+                                    <ComboBoxItem Content="One-way approach" Tag="{x:Static psp:BacklashMode.OneWayApproach}" />
+                                </ComboBox>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </view:SequenceBlockView.SequenceItemContent>
+        </view:SequenceBlockView>
+    </DataTemplate>
+
+</ResourceDictionary>

@@ -13,6 +13,7 @@ namespace NINA.Plugins.PlateSolvePlus.Services {
 
         Task ConnectAsync(CancellationToken ct);
         Task DisconnectAsync(CancellationToken ct);
+        Task<double?> GetPixelSizeUmAsync(CancellationToken ct);
         Task<CapturedFrame> CaptureAsync(
             double exposureSeconds,
             int binX,
@@ -48,6 +49,14 @@ namespace NINA.Plugins.PlateSolvePlus.Services {
                     DisposeCamera();
                 }
             }
+        }
+
+        public async Task<double?> GetPixelSizeUmAsync(CancellationToken ct) {
+            if (camera == null || !camera.IsConnected) {
+                return null;
+            }
+
+            return await camera.GetPixelSizeUmAsync(ct).ConfigureAwait(false);
         }
 
         public async Task<CapturedFrame> CaptureAsync(
