@@ -131,7 +131,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
         // WEB API Variablen
         private PlateSolvePlusApiHost? apiHost;
-        private bool apiBusy;
+        private int apiBusy;
 
         // API state from bus / settings (source of truth for EnsureApiHostState)
         private bool apiEnabledState;
@@ -1790,60 +1790,74 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             if (IsActionActive) return;
             using var _ = BeginActionScope();
 
+            if (!EnsureMountedSecondaryActionReady()) return;
+
+            var solve = await CaptureAndSolveGuiderAsync(updateUi: true).ConfigureAwait(false);
+            if (!solve.success) return;
+
+            var target = UpdateSolveUiAndGetMountTarget(solve.raDeg, solve.decDeg);
+
+            if (UseSlewInsteadOfSync) {
+                await CenterAfterCaptureAsync().ConfigureAwait(false);
+                return;
+            }
+
+            await SyncSolvedTargetAsync(target, lastCorrectedSolveDeg.HasValue).ConfigureAwait(false);
+        }
+
+        private bool EnsureMountedSecondaryActionReady() {
             UpdateMountConnectionState();
 
             if (MountState != MountConnectionState.ConnectedWithCoords) {
                 StatusText = "Mount not ready ❌";
                 DetailsText = "Mount not connected OR coordinates not available.";
-                return;
+                return false;
             }
 
             if (!IsSecondaryConnected) {
                 StatusText = "Secondary camera not connected ❌";
                 DetailsText = "Click Connect first.";
-                return;
+                return false;
             }
 
-            var solve = await CaptureAndSolveGuiderAsync(updateUi: true).ConfigureAwait(false);
-            if (!solve.success) return;
+            return true;
+        }
 
-            // compute corrected (only if enabled + set)
-            lastCorrectedSolveDeg = ComputeCorrectedIfEnabled(solve.raDeg, solve.decDeg);
-            var target = lastCorrectedSolveDeg ?? (solve.raDeg, solve.decDeg);
+        private (double raDeg, double decDeg) UpdateSolveUiAndGetMountTarget(double guiderRaDeg, double guiderDecDeg) {
+            lastCorrectedSolveDeg = ComputeCorrectedIfEnabled(guiderRaDeg, guiderDecDeg);
+            var target = lastCorrectedSolveDeg ?? (guiderRaDeg, guiderDecDeg);
 
-            // remember guider solve (for UI)
-            lastGuiderSolveDeg = (solve.raDeg, solve.decDeg);
-            LastGuiderSolveText = FormatSolvedLine("Guider", solve.raDeg, solve.decDeg);
+            lastGuiderSolveDeg = (guiderRaDeg, guiderDecDeg);
+            LastGuiderSolveText = FormatSolvedLine("Guider", guiderRaDeg, guiderDecDeg);
 
             CorrectedSolveText = lastCorrectedSolveDeg.HasValue
                 ? FormatSolvedLine("Corrected", lastCorrectedSolveDeg.Value.raDeg, lastCorrectedSolveDeg.Value.decDeg)
                 : "Corrected: (No offset set) → using solve as-is.";
 
-            if (!TryToCoordinates(target.raDeg, target.decDeg, out var targetCoords)) {
+            return target;
+        }
+
+        private async Task CenterAfterCaptureAsync() {
+            if (!HasOffsetSet) {
+                StatusText = "Center not available ❌";
+                DetailsText = "Capture + Slew (Center) requires a calibrated offset.";
                 return;
             }
 
-            if (UseSlewInsteadOfSync) {
-                // Capture + Slew (Center) requires an active + calibrated offset
-                if (!HasOffsetSet) {
-                    StatusText = "Center not available ❌";
-                    DetailsText = "Capture + Slew (Center) requires a calibrated offset.";
-                    return;
-                }
+            var thr = PluginSettings?.Settings?.CenteringThresholdArcmin ?? 1.0;
+            var max = PluginSettings?.Settings?.CenteringMaxAttempts ?? 5;
 
-                var thr = PluginSettings?.Settings?.CenteringThresholdArcmin ?? 1.0;
-                var max = PluginSettings?.Settings?.CenteringMaxAttempts ?? 5;
+            await CenterWithSecondaryAsync(thr, max, CancellationToken.None).ConfigureAwait(false);
+        }
 
-                await CenterWithSecondaryAsync(thr, max, CancellationToken.None).ConfigureAwait(false);
-                return;
-            }
-
-            // Capture + Sync
+        private async Task SyncSolvedTargetAsync((double raDeg, double decDeg) target, bool usedCorrectedCoordinates) {
             if (TelescopeMediator == null) {
                 StatusText = "Cannot sync mount ❌";
                 DetailsText = "TelescopeMediator not available (MEF import failed).";
                 return;
             }
+
+            if (!TryToCoordinates(target.raDeg, target.decDeg, out var targetCoords)) return;
 
             try {
                 StatusText = "Syncing mount…";
@@ -1853,10 +1867,11 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
                 StatusText = ok ? "Capture + Sync done ✅" : "Sync failed ❌";
                 DetailsText = ok
-                    ? $"Mount synced to {(lastCorrectedSolveDeg.HasValue ? "corrected" : "solved")} coordinates." +
+                    ? $"Mount synced to {(usedCorrectedCoordinates ? "corrected" : "solved")} coordinates." +
                       $"RA={target.raDeg:0.######}°, Dec={target.decDeg:0.######}°"
                     : $"Sync returned false. Target was: RA={target.raDeg:0.######}°, Dec={target.decDeg:0.######}°";
             } catch (Exception ex) {
+                Logger.Error($"[PlateSolvePlus] Capture + Sync failed: {ex}");
                 StatusText = "Sync failed ❌";
                 DetailsText = ex.ToString();
             }
@@ -2611,6 +2626,32 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         // Center Platesolving
         // =====================================
 
+        private async Task<bool?> TrySyncCenteringCoordinatesAsync(
+            (double raDeg, double decDeg) solvedMain,
+            int attempt,
+            int maxAttempts,
+            string statusPrefix) {
+            if (TelescopeMediator == null) {
+                StatusText = "Cannot sync mount ❌";
+                DetailsText = "TelescopeMediator not available (MEF import failed).";
+                return null;
+            }
+
+            if (!TryToCoordinates(solvedMain.raDeg, solvedMain.decDeg, out var solvedCoords)) {
+                return null;
+            }
+
+            try {
+                StatusText = $"{statusPrefix}: attempt {attempt}/{maxAttempts} – syncing…";
+                DetailsText = $"SyncTo(main): RA={solvedMain.raDeg:0.######}°, Dec={solvedMain.decDeg:0.######}°";
+
+                return await TelescopeMediator.Sync(solvedCoords).ConfigureAwait(false);
+            } catch (Exception ex) {
+                Logger.Debug($"[PlateSolvePlus] {statusPrefix} sync failed: {ex.Message}");
+                return false;
+            }
+        }
+
         private async Task CenterWithSecondaryAsync(double thresholdArcmin, int maxAttempts, CancellationToken ct) {
             UpdateMountConnectionState();
 
@@ -2677,22 +2718,13 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                     return;
                 }
 
-                bool syncOk = false;
-                try {
-                    if (!TryToCoordinates(solvedMain.raDeg, solvedMain.decDeg, out var solvedCoords)) return;
-
-                    StatusText = $"Centering: attempt {attempt}/{maxAttempts} – syncing…";
-                    DetailsText = $"SyncTo(main): RA={solvedMain.raDeg:0.######}°, Dec={solvedMain.decDeg:0.######}°";
-
-                    syncOk = await TelescopeMediator!.Sync(solvedCoords).ConfigureAwait(false);
-                } catch {
-                    syncOk = false;
-                }
+                var syncOk = await TrySyncCenteringCoordinatesAsync(solvedMain, attempt, maxAttempts, "Centering").ConfigureAwait(false);
+                if (!syncOk.HasValue) return;
 
                 double slewRa;
                 double slewDec;
 
-                if (syncOk) {
+                if (syncOk.Value) {
                     slewRa = desiredMain.raDeg;
                     slewDec = desiredMain.decDeg;
 
@@ -2840,22 +2872,13 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                     return;
                 }
 
-                bool syncOk = false;
-                try {
-                    if (!TryToCoordinates(solvedMain.raDeg, solvedMain.decDeg, out var solvedCoords)) return;
-
-                    StatusText = $"Centering(target): attempt {attempt}/{maxAttempts} – syncing…";
-                    DetailsText = $"SyncTo(main): RA={solvedMain.raDeg:0.######}°, Dec={solvedMain.decDeg:0.######}°";
-
-                    syncOk = await TelescopeMediator!.Sync(solvedCoords).ConfigureAwait(false);
-                } catch {
-                    syncOk = false;
-                }
+                var syncOk = await TrySyncCenteringCoordinatesAsync(solvedMain, attempt, maxAttempts, "Centering(target)").ConfigureAwait(false);
+                if (!syncOk.HasValue) return;
 
                 double slewRa;
                 double slewDec;
 
-                if (syncOk) {
+                if (syncOk.Value) {
                     slewRa = desiredRaDeg;
                     slewDec = desiredDecDeg;
 
@@ -2916,22 +2939,34 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         }
 
         // API Wrapper Triggers
-        internal string ApiCaptureOnlyAsync() {
-            if (apiBusy) return "busy";
-            apiBusy = true;
+        private bool TryBeginApiAction() =>
+            Interlocked.CompareExchange(ref apiBusy, 1, 0) == 0;
+
+        private void EndApiAction() =>
+            Interlocked.Exchange(ref apiBusy, 0);
+
+        private string QueueApiAction(Func<Task> action) {
+            if (!TryBeginApiAction()) return "busy";
+
             _ = Task.Run(async () => {
-                try { await CaptureOnlyAsync().ConfigureAwait(false); } finally { apiBusy = false; }
+                try {
+                    await action().ConfigureAwait(false);
+                } catch (Exception ex) {
+                    Logger.Error($"[PlateSolvePlus] API action failed: {ex}");
+                } finally {
+                    EndApiAction();
+                }
             });
+
             return "started";
         }
 
+        internal string ApiCaptureOnlyAsync() {
+            return QueueApiAction(CaptureOnlyAsync);
+        }
+
         internal string ApiCaptureAndSolveAsync() {
-            if (apiBusy) return "busy";
-            apiBusy = true;
-            _ = Task.Run(async () => {
-                try { await CaptureAndSyncOrSlewAsync().ConfigureAwait(false); } finally { apiBusy = false; }
-            });
-            return "started";
+            return QueueApiAction(CaptureAndSyncOrSlewAsync);
         }
 
 
@@ -2940,20 +2975,10 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         /// Runs async (fire-and-forget) and returns a small state string for the REST endpoint.
         /// </summary>
         internal string ApiCaptureAndSyncAsync() {
-            if (apiBusy) return "busy";
-            apiBusy = true;
-
-            _ = Task.Run(async () => {
-                try {
-                    // Ensure correct mode
-                    UseSlewInsteadOfSync = false;
-                    await CaptureAndSyncOrSlewAsync().ConfigureAwait(false);
-                } finally {
-                    apiBusy = false;
-                }
+            return QueueApiAction(async () => {
+                UseSlewInsteadOfSync = false;
+                await CaptureAndSyncOrSlewAsync().ConfigureAwait(false);
             });
-
-            return "started";
         }
 
         /// <summary>
@@ -2961,20 +2986,10 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         /// Runs async (fire-and-forget) and returns a small state string for the REST endpoint.
         /// </summary>
         internal string ApiCaptureAndCenterAsync() {
-            if (apiBusy) return "busy";
-            apiBusy = true;
-
-            _ = Task.Run(async () => {
-                try {
-                    // Ensure center mode
-                    UseSlewInsteadOfSync = true;
-                    await CaptureAndSyncOrSlewAsync().ConfigureAwait(false);
-                } finally {
-                    apiBusy = false;
-                }
+            return QueueApiAction(async () => {
+                UseSlewInsteadOfSync = true;
+                await CaptureAndSyncOrSlewAsync().ConfigureAwait(false);
             });
-
-            return "started";
         }
 
         /// <summary>
@@ -2982,43 +2997,28 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         /// Runs async (fire-and-forget) and returns a small state string for the REST endpoint.
         /// </summary>
         internal string ApiSlewToTargetAndCenterAsync(double targetRaDeg, double targetDecDeg) {
-            if (apiBusy) return "busy";
-            apiBusy = true;
-
-            _ = Task.Run(async () => {
-                try {
-                    TargetRaDeg = targetRaDeg;
-                    TargetDecDeg = targetDecDeg;
-                    await SlewToTargetAndCenterAsync().ConfigureAwait(false);
-                } finally {
-                    apiBusy = false;
-                }
+            return QueueApiAction(async () => {
+                TargetRaDeg = targetRaDeg;
+                TargetDecDeg = targetDecDeg;
+                await SlewToTargetAndCenterAsync().ConfigureAwait(false);
             });
-
-            return "started";
         }
 
         internal string ApiCalibrateOffsetAsync() {
-            if (apiBusy) return "busy";
-            apiBusy = true;
-            _ = Task.Run(async () => {
-                try { await CalibrateOffsetAsync().ConfigureAwait(false); } finally { apiBusy = false; }
-            });
-            return "started";
+            return QueueApiAction(CalibrateOffsetAsync);
         }
 
         internal string ApiStartSecondaryAutofocusAsync(SecondaryAutofocusSettings? settingsOverride = null) {
-            if (apiBusy) return "busy";
-            apiBusy = true;
+            if (!TryBeginApiAction()) return "busy";
 
             try {
                 if (!TryStartSecondaryAutofocus(settingsOverride)) {
-                    apiBusy = false;
+                    EndApiAction();
                     ClearSecondaryAutofocusOverride();
                     return "failed";
                 }
             } catch {
-                apiBusy = false;
+                EndApiAction();
                 ClearSecondaryAutofocusOverride();
                 throw;
             }
@@ -3026,9 +3026,11 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             _ = Task.Run(async () => {
                 try {
                     await WaitForSecondaryAutofocusCompletionAsync(250, CancellationToken.None).ConfigureAwait(false);
+                } catch (Exception ex) {
+                    Logger.Error($"[PlateSolvePlus] API secondary autofocus action failed: {ex}");
                 } finally {
                     ClearSecondaryAutofocusOverride();
-                    apiBusy = false;
+                    EndApiAction();
                 }
             });
 
@@ -3043,7 +3045,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
             return new {
                 importsReady = importsReady,
-                busy = apiBusy,
+                busy = Volatile.Read(ref apiBusy) != 0,
                 mountConnected = IsMountConnected,
                 mountState = MountState.ToString(),
                 secondaryConnected = IsSecondaryConnected,
