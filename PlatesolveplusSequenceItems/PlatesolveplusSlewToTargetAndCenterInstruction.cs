@@ -20,7 +20,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusSequenceItems {
     [JsonObject(MemberSerialization.OptIn)]
     public sealed class PlatesolveplusSlewToTargetAndCenterInstruction : SequenceItem {
 
-        private static bool templatesLoaded = false;
+        private static readonly bool templatesLoaded = false;
         private static readonly object templateLock = new object();
 
         static PlatesolveplusSlewToTargetAndCenterInstruction() {

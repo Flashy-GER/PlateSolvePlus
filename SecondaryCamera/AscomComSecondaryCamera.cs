@@ -22,7 +22,7 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryCamera {
 
         public bool IsConnected {
             get {
-                try { return cam != null && cam.Connected == true; } catch { return false; }
+                try { return cam?.Connected == true; } catch { return false; }
             }
         }
 
@@ -32,11 +32,14 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryCamera {
             if (cam != null)
                 return Task.CompletedTask;
 
+            if (!System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
+                throw new PlatformNotSupportedException("ASCOM COM interop is only supported on Windows.");
+
             var t = Type.GetTypeFromProgID(progId, throwOnError: false);
             if (t == null)
                 throw new InvalidOperationException($"ASCOM ProgID not found: '{progId}'. Is the driver installed?");
 
-            cam = Activator.CreateInstance(t);
+            cam = Activator.CreateInstance(t)!;
             cam.Connected = true;
 
             return Task.CompletedTask;
@@ -204,9 +207,11 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryCamera {
                 height = s2.GetLength(0);
                 width = s2.GetLength(1);
                 var r = new int[height, width];
-                for (int y = 0; y < height; y++)
-                    for (int x = 0; x < width; x++)
+                for (int y = 0; y < height; y++) {
+                    for (int x = 0; x < width; x++) {
                         r[y, x] = s2[y, x];
+                    }
+                }
                 return r;
             }
 
@@ -214,9 +219,11 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryCamera {
                 height = o2.GetLength(0);
                 width = o2.GetLength(1);
                 var r = new int[height, width];
-                for (int y = 0; y < height; y++)
-                    for (int x = 0; x < width; x++)
+                for (int y = 0; y < height; y++) {
+                    for (int x = 0; x < width; x++) {
                         r[y, x] = Convert.ToInt32(o2[y, x]);
+                    }
+                }
                 return r;
             }
 

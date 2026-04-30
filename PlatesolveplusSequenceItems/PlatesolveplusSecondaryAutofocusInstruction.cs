@@ -21,8 +21,8 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusSequenceItems {
     [JsonObject(MemberSerialization.OptIn)]
     public sealed class PlatesolveplusSecondaryAutofocusInstruction : SequenceItem {
 
-        private static bool templatesLoaded = false;
-        private static readonly object templateLock = new object();
+        private static readonly bool templatesLoaded = false;
+        private static readonly object templateLock = new();
 
         static PlatesolveplusSecondaryAutofocusInstruction() {
             lock (templateLock) {
