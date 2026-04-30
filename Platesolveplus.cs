@@ -107,7 +107,7 @@ public static class PlateSolvePlusSettingsBus {
             PlateSolvePlusSettingsBus.SettingChanged += SettingsBus_SettingChanged;
         }
 
-        private void ProfileService_ProfileChanged(object sender, EventArgs e) {
+        private void ProfileService_ProfileChanged(object? sender, EventArgs e) {
             LoadAllIntoSettings(Settings);
             RaisePropertyChanged(string.Empty);
         }

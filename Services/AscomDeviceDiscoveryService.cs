@@ -60,6 +60,8 @@ namespace NINA.Plugins.PlateSolvePlus.Services {
         }
 
         private static dynamic? CreateProfileComObject() {
+            if (!OperatingSystem.IsWindows()) return null;
+
             foreach (var progId in new[] { "ASCOM.Utilities.Profile", "ASCOM.Profile" }) {
                 try {
                     var t = Type.GetTypeFromProgID(progId, throwOnError: false);

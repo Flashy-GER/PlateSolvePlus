@@ -8,7 +8,7 @@ namespace NINA.Plugins.PlateSolvePlus.Utils {
 
         public static void FinalRelease(object? comObject) {
             try {
-                if (comObject != null && Marshal.IsComObject(comObject)) {
+                if (OperatingSystem.IsWindows() && comObject != null && Marshal.IsComObject(comObject)) {
                     Marshal.FinalReleaseComObject(comObject);
                 }
             } catch {

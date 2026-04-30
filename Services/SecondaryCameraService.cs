@@ -85,10 +85,14 @@ namespace NINA.Plugins.PlateSolvePlus.Services {
             return StaTaskRunner.RunAsync(() => {
                 dynamic? comCam = null;
                 try {
+                    if (!OperatingSystem.IsWindows()) return false;
+
                     var t = Type.GetTypeFromProgID(progId, throwOnError: false);
                     if (t == null) return false;
 
                     comCam = Activator.CreateInstance(t);
+                    if (comCam == null) return false;
+
                     comCam.SetupDialog();
                     return true;
                 } catch {

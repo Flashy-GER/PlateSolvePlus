@@ -166,7 +166,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusSequenceItems {
             return _dispatcher.InvokeAsync(func, DispatcherPriority.Background).Task;
         }
 
-        private async Task WaitUntilNotBusy(CancellationToken token, int timeoutSec, int pollMs, IProgress<ApplicationStatus> progress) {
+        private async Task WaitUntilNotBusy(CancellationToken token, int timeoutSec, int pollMs, IProgress<ApplicationStatus>? progress) {
             var start = DateTime.UtcNow;
 
             while (true) {

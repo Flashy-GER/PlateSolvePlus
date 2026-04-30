@@ -8,6 +8,7 @@ namespace NINA.Plugins.PlateSolvePlus.Utils {
 
         public static Task<T> RunAsync<T>(Func<T> action) {
             if (action == null) throw new ArgumentNullException(nameof(action));
+            if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("STA COM calls are only supported on Windows.");
 
             var tcs = new TaskCompletionSource<T>();
 

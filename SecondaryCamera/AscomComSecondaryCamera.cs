@@ -11,7 +11,7 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryCamera {
     /// </summary>
     public sealed class AscomComSecondaryCamera : ISecondaryCamera {
         private readonly string progId;
-        private dynamic cam; // COM object
+        private dynamic? cam; // COM object
 
         public AscomComSecondaryCamera(string progId) {
             if (string.IsNullOrWhiteSpace(progId))
@@ -87,9 +87,11 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryCamera {
 
         private double? TryReadDoubleProperty(string propertyName) {
             try {
+                dynamic camera = cam ?? throw new InvalidOperationException("Secondary camera is not connected.");
+
                 object? value = propertyName switch {
-                    "PixelSizeX" => cam.PixelSizeX,
-                    "PixelSizeY" => cam.PixelSizeY,
+                    "PixelSizeX" => camera.PixelSizeX,
+                    "PixelSizeY" => camera.PixelSizeY,
                     _ => null
                 };
 
@@ -120,6 +122,8 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryCamera {
             CancellationToken ct) {
             if (cam == null || !IsConnected)
                 throw new InvalidOperationException("Secondary camera is not connected.");
+            object cameraObject = cam!;
+            dynamic camera = cameraObject;
 
             if (exposureSeconds <= 0)
                 throw new ArgumentOutOfRangeException(nameof(exposureSeconds), "Exposure must be > 0.");
@@ -130,16 +134,16 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryCamera {
             ct.ThrowIfCancellationRequested();
 
             // Best-effort set binning (not all drivers support it)
-            TrySet(() => cam.BinX = binX);
-            TrySet(() => cam.BinY = binY);
+            TrySet(() => camera.BinX = binX);
+            TrySet(() => camera.BinY = binY);
 
             // Best-effort set gain (many ASCOM drivers: Gain property exists, but not all)
             if (gain.HasValue)
-                TrySet(() => cam.Gain = gain.Value);
+                TrySet(() => camera.Gain = gain.Value);
 
             // Start exposure: StartExposure(Duration, Light)
             // Some drivers require Light=true for normal frames.
-            cam.StartExposure(exposureSeconds, true);
+            camera.StartExposure(exposureSeconds, true);
 
             // Wait for ImageReady (polling)
             var start = DateTime.UtcNow;
@@ -147,7 +151,7 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryCamera {
                 ct.ThrowIfCancellationRequested();
 
                 bool ready = false;
-                try { ready = cam.ImageReady == true; } catch {
+                try { ready = camera.ImageReady == true; } catch {
                     // If ImageReady not supported, fallback to a short delay then try read image
                     ready = false;
                 }
@@ -163,11 +167,11 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryCamera {
             }
 
             // Read image data
-            object imageArrayObj = null;
+            object? imageArrayObj = null;
 
             // ASCOM camera exposes ImageArray (2D) or ImageArrayVariant
-            try { imageArrayObj = cam.ImageArray; } catch {
-                try { imageArrayObj = cam.ImageArrayVariant; } catch { /* ignore */ }
+            try { imageArrayObj = camera.ImageArray; } catch {
+                try { imageArrayObj = camera.ImageArrayVariant; } catch { /* ignore */ }
             }
 
             if (imageArrayObj == null)
@@ -177,8 +181,8 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryCamera {
             var pixels = ConvertToInt2D(imageArrayObj, out var width, out var height);
 
             int bitDepth = 16;
-            try { bitDepth = (int)cam.CameraXSize > 0 ? 16 : 16; } catch { /* ignore */ }
-            TryGet(() => bitDepth = (int)cam.MaxADU > 0 ? 16 : 16); // best-effort (MaxADU exists on some)
+            try { bitDepth = (int)camera.CameraXSize > 0 ? 16 : 16; } catch { /* ignore */ }
+            TryGet(() => bitDepth = (int)camera.MaxADU > 0 ? 16 : 16); // best-effort (MaxADU exists on some)
 
             return new SecondaryCameraFrame(pixels, width, height, bitDepth, DateTime.UtcNow);
         }

@@ -254,7 +254,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusSequenceItems {
             return ReadAutofocusStatusSnapshot(statusObj);
         }
 
-        private async Task WaitUntilNotBusy(CancellationToken token, int timeoutSec, int pollMs, IProgress<ApplicationStatus> progress) {
+        private async Task WaitUntilNotBusy(CancellationToken token, int timeoutSec, int pollMs, IProgress<ApplicationStatus>? progress) {
             var start = DateTime.UtcNow;
 
             while (true) {
@@ -275,7 +275,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusSequenceItems {
             }
         }
 
-        private async Task<AutofocusStatusSnapshot> WaitUntilAutofocusFinished(CancellationToken token, int timeoutSec, int pollMs, IProgress<ApplicationStatus> progress) {
+        private async Task<AutofocusStatusSnapshot> WaitUntilAutofocusFinished(CancellationToken token, int timeoutSec, int pollMs, IProgress<ApplicationStatus>? progress) {
             var start = DateTime.UtcNow;
 
             while (true) {
