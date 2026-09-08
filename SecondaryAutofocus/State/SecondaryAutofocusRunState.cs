@@ -32,7 +32,7 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.State {
 
         private string? _lastError;
         public string? LastError { get => _lastError; set => SetProperty(ref _lastError, value); }
-        public string StatusText { get; internal set; }
+        public string StatusText { get; internal set; } = string.Empty;
     }
 
     public enum SecondaryAfPhase {

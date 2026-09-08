@@ -224,6 +224,12 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryCamera {
         public Task<int> GetMaxAduAsync(CancellationToken ct)
             => GetValueAsync<int>("maxadu", ct);
 
+        public Task<double> GetPixelSizeXAsync(CancellationToken ct)
+            => GetValueAsync<double>("pixelsizex", ct);
+
+        public Task<double> GetPixelSizeYAsync(CancellationToken ct)
+            => GetValueAsync<double>("pixelsizey", ct);
+
         public async Task<int[,]> GetImageArray2DAsync(CancellationToken ct) {
             // imagearray can be very large -> use ImageTimeout
             var jagged = await GetValueAsync<int[][]>("imagearray", ct, timeoutOverride: ImageTimeout).ConfigureAwait(false);

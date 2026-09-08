@@ -3,36 +3,57 @@
                     xmlns:seq="clr-namespace:NINA.Plugins.PlateSolvePlus.PlatesolveplusSequenceItems"
                     xmlns:view="clr-namespace:NINA.View.Sequencer;assembly=NINA.Sequencer">
 
+    <Style x:Key="SectionCard" TargetType="Border">
+        <Setter Property="Margin" Value="0,0,0,10" />
+        <Setter Property="Padding" Value="12" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderBrush" Value="#22000000" />
+        <Setter Property="Background" Value="#08000000" />
+    </Style>
+
+    <Style x:Key="FieldLabel" TargetType="TextBlock">
+        <Setter Property="Margin" Value="0,0,10,8" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Opacity" Value="0.85" />
+    </Style>
+
+    <Style x:Key="HintText" TargetType="TextBlock">
+        <Setter Property="Opacity" Value="0.72" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
     <DataTemplate DataType="{x:Type seq:PlatesolveplusWaitUntilReadyInstruction}">
         <view:SequenceBlockView>
             <view:SequenceBlockView.SequenceItemContent>
+                <StackPanel>
+                    <TextBlock Margin="0,0,0,12"
+                               Style="{StaticResource HintText}"
+                               Text="Pauses the sequence until PlateSolvePlus is imported, idle and ready for the next action." />
 
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="170"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="170"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
+                    <Border Style="{StaticResource SectionCard}">
+                        <StackPanel>
+                            <TextBlock FontWeight="SemiBold" Text="Readiness Check" />
+                            <TextBlock Margin="0,4,0,10" Style="{StaticResource HintText}" Text="Useful before a solve, centering pass or autofocus step when you want the sequencer to wait for the plugin to settle down first." />
 
-                    <TextBlock Grid.Row="0" Grid.ColumnSpan="4"
-                               Text="Wait until PlateSolvePlus is ready (imports ready / not busy)."
-                               Opacity="0.75"
-                               Margin="0,0,0,10"
-                               TextWrapping="Wrap"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="170" />
+                                    <ColumnDefinition Width="90" />
+                                    <ColumnDefinition Width="24" />
+                                    <ColumnDefinition Width="170" />
+                                    <ColumnDefinition Width="90" />
+                                </Grid.ColumnDefinitions>
 
-                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Timeout (s)" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                    <TextBox   Grid.Row="1" Grid.Column="1" Text="{Binding TimeoutSeconds, UpdateSourceTrigger=LostFocus}" MinWidth="60" Margin="0,0,14,0"/>
+                                <TextBlock Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Timeout (s)" />
+                                <TextBox Grid.Column="1" Text="{Binding TimeoutSeconds, UpdateSourceTrigger=LostFocus}" />
 
-                    <TextBlock Grid.Row="1" Grid.Column="2" Text="Poll interval (ms)" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                    <TextBox   Grid.Row="1" Grid.Column="3" Text="{Binding PollIntervalMs, UpdateSourceTrigger=LostFocus}" MinWidth="60"/>
-
-                </Grid>
-
+                                <TextBlock Grid.Column="3" Style="{StaticResource FieldLabel}" Text="Poll interval (ms)" />
+                                <TextBox Grid.Column="4" Text="{Binding PollIntervalMs, UpdateSourceTrigger=LostFocus}" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
             </view:SequenceBlockView.SequenceItemContent>
         </view:SequenceBlockView>
     </DataTemplate>

@@ -3,50 +3,96 @@
                     xmlns:seq="clr-namespace:NINA.Plugins.PlateSolvePlus.PlatesolveplusSequenceItems"
                     xmlns:view="clr-namespace:NINA.View.Sequencer;assembly=NINA.Sequencer">
 
+    <Style x:Key="SectionCard" TargetType="Border">
+        <Setter Property="Margin" Value="0,0,0,10" />
+        <Setter Property="Padding" Value="12" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderBrush" Value="#22000000" />
+        <Setter Property="Background" Value="#08000000" />
+    </Style>
+
+    <Style x:Key="FieldLabel" TargetType="TextBlock">
+        <Setter Property="Margin" Value="0,0,10,8" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Opacity" Value="0.85" />
+    </Style>
+
+    <Style x:Key="HintText" TargetType="TextBlock">
+        <Setter Property="Opacity" Value="0.72" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
     <DataTemplate DataType="{x:Type seq:PlatesolveplusSecondarySolveInstruction}">
         <view:SequenceBlockView>
             <view:SequenceBlockView.SequenceItemContent>
+                <StackPanel>
+                    <TextBlock Margin="0,0,0,12"
+                               Style="{StaticResource HintText}"
+                               Text="Captures with the secondary camera and solves the image through PlateSolvePlus using sequencer-friendly capture and solver settings." />
 
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="170"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="170"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
+                    <Border Style="{StaticResource SectionCard}">
+                        <StackPanel>
+                            <TextBlock FontWeight="SemiBold" Text="Capture" />
+                            <TextBlock Margin="0,4,0,10" Style="{StaticResource HintText}" Text="These values are written to the secondary-camera capture settings right before the solve starts." />
 
-                    <TextBlock Grid.Row="0" Grid.ColumnSpan="4"
-                               Text="Capture with secondary camera and plate solve via PlateSolvePlus."
-                               Opacity="0.75"
-                               Margin="0,0,0,10"
-                               TextWrapping="Wrap"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="170" />
+                                    <ColumnDefinition Width="90" />
+                                    <ColumnDefinition Width="24" />
+                                    <ColumnDefinition Width="170" />
+                                    <ColumnDefinition Width="90" />
+                                </Grid.ColumnDefinitions>
 
-                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Exposure (s)" VerticalAlignment="Center" Margin="0,0,8,6"/>
-                    <TextBox   Grid.Row="1" Grid.Column="1" Text="{Binding ExposureSeconds, UpdateSourceTrigger=LostFocus}" MinWidth="60" Margin="0,0,14,6"/>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
 
-                    <TextBlock Grid.Row="1" Grid.Column="2" Text="Gain (-1 = Auto)" VerticalAlignment="Center" Margin="0,0,8,6"/>
-                    <TextBox   Grid.Row="1" Grid.Column="3" Text="{Binding Gain, UpdateSourceTrigger=LostFocus}" MinWidth="60" Margin="0,0,0,6"/>
+                                <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Exposure (s)" />
+                                <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding ExposureSeconds, UpdateSourceTrigger=LostFocus}" />
 
-                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Binning" VerticalAlignment="Center" Margin="0,0,8,6"/>
-                    <TextBox   Grid.Row="2" Grid.Column="1" Text="{Binding Binning, UpdateSourceTrigger=LostFocus}" MinWidth="60" Margin="0,0,14,6"/>
+                                <TextBlock Grid.Row="0" Grid.Column="3" Style="{StaticResource FieldLabel}" Text="Gain (-1 = auto)" />
+                                <TextBox Grid.Row="0" Grid.Column="4" Text="{Binding Gain, UpdateSourceTrigger=LostFocus}" />
 
-                    <TextBlock Grid.Row="2" Grid.Column="2" Text="Downsample" VerticalAlignment="Center" Margin="0,0,8,6"/>
-                    <TextBox   Grid.Row="2" Grid.Column="3" Text="{Binding Downsample, UpdateSourceTrigger=LostFocus}" MinWidth="60" Margin="0,0,0,6"/>
+                                <TextBlock Grid.Row="1" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Binning" />
+                                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Binning, UpdateSourceTrigger=LostFocus}" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
 
-                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Search radius (deg)" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                    <TextBox   Grid.Row="3" Grid.Column="1" Text="{Binding SearchRadiusDeg, UpdateSourceTrigger=LostFocus}" MinWidth="60" Margin="0,0,14,0"/>
+                    <Border Style="{StaticResource SectionCard}">
+                        <StackPanel>
+                            <TextBlock FontWeight="SemiBold" Text="Solver" />
+                            <TextBlock Margin="0,4,0,10" Style="{StaticResource HintText}" Text="Fine-tune the search radius, downsampling and timeout for this solve step without touching the rest of the workflow." />
 
-                    <TextBlock Grid.Row="3" Grid.Column="2" Text="Timeout (s)" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                    <TextBox   Grid.Row="3" Grid.Column="3" Text="{Binding TimeoutSeconds, UpdateSourceTrigger=LostFocus}" MinWidth="60"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="170" />
+                                    <ColumnDefinition Width="90" />
+                                    <ColumnDefinition Width="24" />
+                                    <ColumnDefinition Width="170" />
+                                    <ColumnDefinition Width="90" />
+                                </Grid.ColumnDefinitions>
 
-                </Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
 
+                                <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Search radius (deg)" />
+                                <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding SearchRadiusDeg, UpdateSourceTrigger=LostFocus}" />
+
+                                <TextBlock Grid.Row="0" Grid.Column="3" Style="{StaticResource FieldLabel}" Text="Downsample" />
+                                <TextBox Grid.Row="0" Grid.Column="4" Text="{Binding Downsample, UpdateSourceTrigger=LostFocus}" />
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Timeout (s)" />
+                                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding TimeoutSeconds, UpdateSourceTrigger=LostFocus}" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
             </view:SequenceBlockView.SequenceItemContent>
         </view:SequenceBlockView>
     </DataTemplate>

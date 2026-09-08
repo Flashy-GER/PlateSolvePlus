@@ -13,6 +13,7 @@ namespace NINA.Plugins.PlateSolvePlus.Services {
 
         Task ConnectAsync(CancellationToken ct);
         Task DisconnectAsync(CancellationToken ct);
+        Task<double?> GetPixelSizeUmAsync(CancellationToken ct);
         Task<CapturedFrame> CaptureAsync(
             double exposureSeconds,
             int binX,
@@ -50,6 +51,14 @@ namespace NINA.Plugins.PlateSolvePlus.Services {
             }
         }
 
+        public async Task<double?> GetPixelSizeUmAsync(CancellationToken ct) {
+            if (camera == null || !camera.IsConnected) {
+                return null;
+            }
+
+            return await camera.GetPixelSizeUmAsync(ct).ConfigureAwait(false);
+        }
+
         public async Task<CapturedFrame> CaptureAsync(
             double exposureSeconds,
             int binX,
@@ -76,10 +85,14 @@ namespace NINA.Plugins.PlateSolvePlus.Services {
             return StaTaskRunner.RunAsync(() => {
                 dynamic? comCam = null;
                 try {
+                    if (!OperatingSystem.IsWindows()) return false;
+
                     var t = Type.GetTypeFromProgID(progId, throwOnError: false);
                     if (t == null) return false;
 
                     comCam = Activator.CreateInstance(t);
+                    if (comCam == null) return false;
+
                     comCam.SetupDialog();
                     return true;
                 } catch {

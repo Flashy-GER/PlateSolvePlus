@@ -71,7 +71,7 @@
                                     ToolTip="Exposure time of the guide / secondary camera used for plate solving." />
                                 <TextBox
                                     Width="140"
-                                    Text="{Binding Settings.GuideExposureSeconds, UpdateSourceTrigger=PropertyChanged}"
+                                    Text="{Binding Settings.GuideExposureSeconds, Converter={StaticResource DoubleConverter}, UpdateSourceTrigger=LostFocus}"
                                     ToolTip="Seconds, e.g. 1.5" />
                             </StackPanel>
 
@@ -111,7 +111,7 @@
                                     ToolTip="Focal length of the guide / secondary setup (important for pixel scale and solver parameters)." />
                                 <TextBox
                                     Width="140"
-                                    Text="{Binding Settings.GuideFocalLengthMm, UpdateSourceTrigger=PropertyChanged}"
+                                    Text="{Binding Settings.GuideFocalLengthMm, Converter={StaticResource DoubleConverter}, UpdateSourceTrigger=LostFocus}"
                                     ToolTip="e.g. 240" />
                             </StackPanel>
 
@@ -128,7 +128,7 @@
                                     ToolTip="Only relevant when 'Use camera pixel size' is disabled." />
                                 <TextBox
                                     Width="140"
-                                    Text="{Binding Settings.GuidePixelSizeUm, UpdateSourceTrigger=PropertyChanged}"
+                                    Text="{Binding Settings.GuidePixelSizeUm, Converter={StaticResource DoubleConverter}, UpdateSourceTrigger=LostFocus}"
                                     ToolTip="e.g. 3.75">
                                     <TextBox.Style>
                                         <Style TargetType="{x:Type TextBox}">
@@ -157,7 +157,7 @@
                                     ToolTip="Search radius around the start coordinates. Larger = more robust but slower." />
                                 <TextBox
                                     Width="140"
-                                    Text="{Binding Settings.SolverSearchRadiusDeg, UpdateSourceTrigger=PropertyChanged}"
+                                    Text="{Binding Settings.SolverSearchRadiusDeg, Converter={StaticResource DoubleConverter}, UpdateSourceTrigger=LostFocus}"
                                     ToolTip="e.g. 5" />
                             </StackPanel>
 
@@ -197,7 +197,7 @@
                                     ToolTip="Target accuracy: maximum remaining error in arcminutes." />
                                 <TextBox
                                     Width="140"
-                                    Text="{Binding Settings.CenteringThresholdArcmin, UpdateSourceTrigger=PropertyChanged}"
+                                    Text="{Binding Settings.CenteringThresholdArcmin, Converter={StaticResource DoubleConverter}, UpdateSourceTrigger=LostFocus}"
                                     ToolTip="e.g. 1.0" />
                             </StackPanel>
 
@@ -403,7 +403,7 @@
 
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Width="150" Text="Exposure (s)" />
-                                <TextBox Width="80" Text="{Binding Settings.AfExposureSeconds, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBox Width="80" Text="{Binding Settings.AfExposureSeconds, Converter={StaticResource DoubleConverter}, UpdateSourceTrigger=LostFocus}" />
                             </StackPanel>
 
                             <StackPanel Orientation="Horizontal">

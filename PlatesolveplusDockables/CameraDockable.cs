@@ -1,4 +1,4 @@
-﻿using NINA.Astrometry;
+using NINA.Astrometry;
 using NINA.Core.Utility;
 using NINA.Equipment.Interfaces.Mediator;
 using NINA.Image.ImageData;
@@ -44,7 +44,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         IPartImportsSatisfiedNotification {
         private const string FallbackSecondaryCameraProgId = "ASCOM.Simulator.Camera";
 
-        private readonly IProfileService profileService;
+        private readonly IProfileService dockableProfileService;
 
         [Import]
         private Lazy<IPlateSolvePlusContext> ContextLazy { get; set; } = null!;
@@ -79,7 +79,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         private bool disposed;
 
         private bool pluginSettingsHooked;
-        private bool busHooked;
         private bool telescopeReferenceHooked;
         private bool focuserReferenceHooked;
 
@@ -117,9 +116,10 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
 
 
-        private bool secondaryAutofocusInitialized;
         private readonly object secondaryAutofocusStatusLock = new();
+        private readonly object secondaryAutofocusOverrideLock = new();
         private SecondaryAutofocusStatusDto? secondaryAutofocusStatus;
+        private SecondaryAutofocusSettings? secondaryAutofocusSequenceOverride;
 
         private void PluginSettings_SettingsOnPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) {
             if (e.PropertyName == nameof(PlateSolvePlusSettings.AFBlock)) {
@@ -129,7 +129,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
         // WEB API Variablen
         private PlateSolvePlusApiHost? apiHost;
-        private bool apiBusy;
+        private int apiBusy;
 
         // API state from bus / settings (source of truth for EnsureApiHostState)
         private bool apiEnabledState;
@@ -140,7 +140,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
         // ===== Framing Assistant Target Tracking =====
         private bool framingTargetHooked = false;
-        private object? framingTargetVmObj = null;
         private INotifyPropertyChanged? framingTargetNpc = null;
 
         internal IAscomDeviceDiscoveryService AscomDiscovery => Context.AscomDiscovery;
@@ -234,6 +233,10 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 await _camera.DisconnectAsync(ct).ConfigureAwait(false);
             }
 
+            public Task<double?> GetPixelSizeUmAsync(CancellationToken ct) {
+                return _camera.GetPixelSizeUmAsync(ct);
+            }
+
             public async Task<CapturedFrame> CaptureAsync(double exposureSeconds, int binX, int binY, int? gain, CancellationToken ct) {
                 var frame = await _camera.CaptureAsync(exposureSeconds, binX, binY, gain, ct).ConfigureAwait(false);
                 // Alpaca imagearray is typically delivered as already-debayered or mono depending on camera; treat as non-bayered by default.
@@ -264,7 +267,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             }
 
             SecondaryAutofocus = null;
-            secondaryAutofocusInitialized = false;
             RaisePropertyChanged(nameof(SecondaryAutofocus));
             RaisePropertyChanged(nameof(IsSecondaryAutofocusAvailable));
             RaisePropertyChanged(nameof(CanStartSecondaryAutofocus));
@@ -272,24 +274,31 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         }
 
         private Task StartSecondaryAutofocusAsync() {
+            TryStartSecondaryAutofocus();
+            return Task.CompletedTask;
+        }
 
-            // HARD PRECONDITIONS – do not even create/run AF if not available
+        private bool TryStartSecondaryAutofocus(SecondaryAutofocusSettings? settingsOverride = null) {
+            // HARD PRECONDITIONS - do not even create/run AF if not available
             if (!IsSecondaryConnected) {
                 StatusText = "Secondary camera not connected.";
-                return Task.CompletedTask;
+                ClearSecondaryAutofocusOverride();
+                return false;
             }
 
             // Use your REAL focuser connection flag here if you have one.
             // FocuserMediator != null is not always equal to "connected".
             if (!IsFocuserAvailable) {
                 StatusText = "Focuser not connected.";
-                return Task.CompletedTask;
+                ClearSecondaryAutofocusOverride();
+                return false;
             }
 
             EnsureSecondaryAutofocus();
             if (SecondaryAutofocus == null) {
                 StatusText = "Autofocus not available.";
-                return Task.CompletedTask;
+                ClearSecondaryAutofocusOverride();
+                return false;
             }
 
             RaisePropertyChanged(nameof(IsSecondaryAutofocusAvailable));
@@ -298,23 +307,33 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
             if (SecondaryAutofocus == null) {
                 StatusText = "Secondary Autofocus not available (not initialized).";
-                return Task.CompletedTask;
+                ClearSecondaryAutofocusOverride();
+                return false;
             }
 
             try {
+                lock (secondaryAutofocusStatusLock) {
+                    secondaryAutofocusStatus = null;
+                }
+
+                SetSecondaryAutofocusOverride(settingsOverride);
+
                 // If the XAML binds directly to SecondaryAutofocus.StartCommand, this Execute() path is still useful
                 // for users who bind to StartSecondaryAutofocusCommand (compat).
                 if (SecondaryAutofocus.StartCommand?.CanExecute(null) == true) {
                     SecondaryAutofocus.StartCommand.Execute(null);
-                } else {
-                    // Give immediate feedback instead of silently doing nothing
-                    StatusText = SecondaryAutofocus.RunState?.LastError ?? "Secondary Autofocus cannot start (CanExecute = false).";
+                    return true;
                 }
+
+                // Give immediate feedback instead of silently doing nothing
+                StatusText = SecondaryAutofocus.RunState?.LastError ?? "Secondary Autofocus cannot start (CanExecute = false).";
+                ClearSecondaryAutofocusOverride();
+                return false;
             } catch (Exception ex) {
                 StatusText = $"Secondary Autofocus start failed: {ex.Message}";
+                ClearSecondaryAutofocusOverride();
+                return false;
             }
-
-            return Task.CompletedTask;
         }
 
         private void CancelSecondaryAutofocus() {
@@ -348,6 +367,11 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 return;
 
             try {
+                if (FocuserMediator == null) {
+                    StatusText = "Secondary Autofocus unavailable: focuser mediator not available.";
+                    return;
+                }
+
                 var capture = new SecondaryCameraCaptureAdapter(SecondaryCameraService);
                 var metric = new BasicHfrMetricService();
                 var fit = new QuadraticCurveFitService();
@@ -373,33 +397,35 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
                 // helper: map persisted AF fields -> VM settings
                 void ApplyPersistedAfToVm(PlateSolvePlusSettings s) {
+                    var autofocus = SecondaryAutofocus ?? throw new InvalidOperationException("Secondary Autofocus VM is not initialized.");
+
                     // IMPORTANT: use Af* fields (persisted) as source of truth
-                    SecondaryAutofocus.Settings.ExposureSeconds = s.AfExposureSeconds;
-                    SecondaryAutofocus.Settings.Gain = s.AfGain;
-                    SecondaryAutofocus.Settings.BinX = s.AfBinX;
-                    SecondaryAutofocus.Settings.BinY = s.AfBinY;
+                    autofocus.Settings.ExposureSeconds = s.AfExposureSeconds;
+                    autofocus.Settings.Gain = s.AfGain;
+                    autofocus.Settings.BinX = s.AfBinX;
+                    autofocus.Settings.BinY = s.AfBinY;
 
-                    SecondaryAutofocus.Settings.StepSize = s.AfStepSize;
-                    SecondaryAutofocus.Settings.StepsOut = s.AfStepsOut;
-                    SecondaryAutofocus.Settings.StepsIn = s.AfStepsIn;
+                    autofocus.Settings.StepSize = s.AfStepSize;
+                    autofocus.Settings.StepsOut = s.AfStepsOut;
+                    autofocus.Settings.StepsIn = s.AfStepsIn;
 
-                    SecondaryAutofocus.Settings.SettleTimeMs = s.AfSettleTimeMs;
+                    autofocus.Settings.SettleTimeMs = s.AfSettleTimeMs;
 
-                    SecondaryAutofocus.Settings.BacklashSteps = s.AfBacklashSteps;
-                    SecondaryAutofocus.Settings.BacklashMode = s.AfBacklashMode;
+                    autofocus.Settings.BacklashSteps = s.AfBacklashSteps;
+                    autofocus.Settings.BacklashMode = s.AfBacklashMode;
 
-                    SecondaryAutofocus.Settings.TimeoutSeconds = s.AfTimeoutSeconds;
+                    autofocus.Settings.TimeoutSeconds = s.AfTimeoutSeconds;
 
-                    Logger.Debug($"[PlateSolvePlus] AF Settings instance hash: {SecondaryAutofocus.Settings.GetHashCode()}");
+                    Logger.Debug($"[PlateSolvePlus] AF Settings instance hash: {autofocus.Settings.GetHashCode()}");
                     Logger.Debug($"[PlateSolvePlus] AF SETTINGS (from Af*): " +
-                        $"Exposure={SecondaryAutofocus.Settings.ExposureSeconds}s Gain={SecondaryAutofocus.Settings.Gain} " +
-                        $"Bin={SecondaryAutofocus.Settings.BinX}x{SecondaryAutofocus.Settings.BinY} " +
-                        $"StepSize={SecondaryAutofocus.Settings.StepSize} Out={SecondaryAutofocus.Settings.StepsOut} In={SecondaryAutofocus.Settings.StepsIn} " +
-                        $"Settle={SecondaryAutofocus.Settings.SettleTimeMs}ms " +
-                        $"BacklashSteps={SecondaryAutofocus.Settings.BacklashSteps} BacklashMode={SecondaryAutofocus.Settings.BacklashMode} " +
-                        $"MinStars={SecondaryAutofocus.Settings.MinStars} MaxStars={SecondaryAutofocus.Settings.MaxStars} " +
-                        $"Timeout={SecondaryAutofocus.Settings.TimeoutSeconds}s " +
-                        $"MinPos={SecondaryAutofocus.Settings.MinFocuserPosition} MaxPos={SecondaryAutofocus.Settings.MaxFocuserPosition}");
+                        $"Exposure={autofocus.Settings.ExposureSeconds}s Gain={autofocus.Settings.Gain} " +
+                        $"Bin={autofocus.Settings.BinX}x{autofocus.Settings.BinY} " +
+                        $"StepSize={autofocus.Settings.StepSize} Out={autofocus.Settings.StepsOut} In={autofocus.Settings.StepsIn} " +
+                        $"Settle={autofocus.Settings.SettleTimeMs}ms " +
+                        $"BacklashSteps={autofocus.Settings.BacklashSteps} BacklashMode={autofocus.Settings.BacklashMode} " +
+                        $"MinStars={autofocus.Settings.MinStars} MaxStars={autofocus.Settings.MaxStars} " +
+                        $"Timeout={autofocus.Settings.TimeoutSeconds}s " +
+                        $"MinPos={autofocus.Settings.MinFocuserPosition} MaxPos={autofocus.Settings.MaxFocuserPosition}");
                 }
 
                 SecondaryAutofocus = new SecondaryAutofocusViewModel(
@@ -420,9 +446,17 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                             Logger.Debug("[PlateSolvePlus] Dockable Settings is NULL (cannot apply Af*).");
                         }
 
+                        var runtimeOverride = GetSecondaryAutofocusOverrideSnapshot();
+                        if (runtimeOverride != null) {
+                            var autofocus = SecondaryAutofocus ?? throw new InvalidOperationException("Secondary Autofocus VM is not initialized.");
+                            autofocus.Settings.ApplyFrom(runtimeOverride);
+                            autofocus.Settings.HfrMetric = runtimeOverride.HfrMetric;
+                        }
+
                         // Startposition aus der Referenz nehmen
                         if (FocuserRef?.TryGetPosition(out var p) == true) {
-                            SecondaryAutofocus.RunState.CurrentPosition = p;
+                            var autofocus = SecondaryAutofocus ?? throw new InvalidOperationException("Secondary Autofocus VM is not initialized.");
+                            autofocus.RunState.CurrentPosition = p;
                         }
 
                         SetActionActiveSafe(true);
@@ -435,7 +469,13 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                     ApplyPersistedAfToVm(initial);
                 }
 
-                secondaryAutofocusInitialized = true;
+                var runtimeOverride = GetSecondaryAutofocusOverrideSnapshot();
+                if (runtimeOverride != null) {
+                    var autofocus = SecondaryAutofocus ?? throw new InvalidOperationException("Secondary Autofocus VM is not initialized.");
+                    autofocus.Settings.ApplyFrom(runtimeOverride);
+                    autofocus.Settings.HfrMetric = runtimeOverride.HfrMetric;
+                }
+
                 RaisePropertyChanged(nameof(SecondaryAutofocus));
                 RaisePropertyChanged(nameof(IsSecondaryAutofocusAvailable));
                 RaisePropertyChanged(nameof(CanStartSecondaryAutofocus));
@@ -443,7 +483,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
             } catch (Exception ex) {
                 // keep it retryable
-                secondaryAutofocusInitialized = false;
                 ResetSecondaryAutofocus();
                 StatusText = $"Secondary AF init failed: {ex.Message}";
                 Logger.Error($"[PlateSolvePlus] Secondary AF init failed: {ex}");
@@ -538,6 +577,76 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             public int BestPosition { get; set; }
             public double BestHfr { get; set; }
             public string? LastError { get; set; }
+        }
+
+        private SecondaryAutofocusSettings? GetSecondaryAutofocusOverrideSnapshot() {
+            lock (secondaryAutofocusOverrideLock) {
+                return secondaryAutofocusSequenceOverride == null
+                    ? null
+                    : CloneSecondaryAutofocusSettings(secondaryAutofocusSequenceOverride);
+            }
+        }
+
+        private void SetSecondaryAutofocusOverride(SecondaryAutofocusSettings? settingsOverride) {
+            lock (secondaryAutofocusOverrideLock) {
+                secondaryAutofocusSequenceOverride = settingsOverride == null
+                    ? null
+                    : CloneSecondaryAutofocusSettings(settingsOverride);
+            }
+        }
+
+        private void ClearSecondaryAutofocusOverride() {
+            lock (secondaryAutofocusOverrideLock) {
+                secondaryAutofocusSequenceOverride = null;
+            }
+        }
+
+        private SecondaryAutofocusStatusDto? GetSecondaryAutofocusStatusSnapshot() {
+            lock (secondaryAutofocusStatusLock) {
+                return secondaryAutofocusStatus == null
+                    ? null
+                    : new SecondaryAutofocusStatusDto {
+                        Phase = secondaryAutofocusStatus.Phase,
+                        Progress = secondaryAutofocusStatus.Progress,
+                        Status = secondaryAutofocusStatus.Status,
+                        CurrentPosition = secondaryAutofocusStatus.CurrentPosition,
+                        CurrentHfr = secondaryAutofocusStatus.CurrentHfr,
+                        CurrentStars = secondaryAutofocusStatus.CurrentStars,
+                        BestPosition = secondaryAutofocusStatus.BestPosition,
+                        BestHfr = secondaryAutofocusStatus.BestHfr,
+                        LastError = secondaryAutofocusStatus.LastError
+                    };
+            }
+        }
+
+        private static SecondaryAutofocusSettings CloneSecondaryAutofocusSettings(SecondaryAutofocusSettings source) {
+            var clone = new SecondaryAutofocusSettings();
+            clone.ApplyFrom(source);
+            clone.HfrMetric = source.HfrMetric;
+            return clone;
+        }
+
+        private static bool IsSecondaryAutofocusTerminalPhase(string? phase) =>
+            string.Equals(phase, nameof(SecondaryAfPhase.Completed), StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(phase, nameof(SecondaryAfPhase.Failed), StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(phase, nameof(SecondaryAfPhase.Cancelled), StringComparison.OrdinalIgnoreCase);
+
+        private async Task WaitForSecondaryAutofocusCompletionAsync(int pollIntervalMs, CancellationToken token) {
+            while (true) {
+                token.ThrowIfCancellationRequested();
+
+                var snapshot = GetSecondaryAutofocusStatusSnapshot();
+                if (snapshot != null && IsSecondaryAutofocusTerminalPhase(snapshot.Phase)) {
+                    return;
+                }
+
+                var currentPhase = SecondaryAutofocus?.RunState?.Phase.ToString();
+                if (IsSecondaryAutofocusTerminalPhase(currentPhase)) {
+                    return;
+                }
+
+                await Task.Delay(Math.Max(100, pollIntervalMs), token).ConfigureAwait(false);
+            }
         }
 
         // ============================================================
@@ -689,7 +798,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         /// <summary>Reference equality comparer to avoid traversing cycles.</summary>
         private sealed class ReferenceEqualityComparer : System.Collections.Generic.IEqualityComparer<object> {
             public static readonly ReferenceEqualityComparer Instance = new ReferenceEqualityComparer();
-            public new bool Equals(object x, object y) => ReferenceEquals(x, y);
+            public new bool Equals(object? x, object? y) => ReferenceEquals(x, y);
             public int GetHashCode(object obj) => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
         }
 
@@ -1102,18 +1211,18 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
         [ImportingConstructor]
         public CameraDockable(IProfileService profileService) : base(profileService) {
-            this.profileService = profileService ?? throw new ArgumentNullException(nameof(profileService));
+            dockableProfileService = profileService ?? throw new ArgumentNullException(nameof(profileService));
 
             Title = "PlateSolvePlus – Camera";
             IsVisible = true;
 
-            RefreshSecondaryCameraListCommand = new RelayCommand(_ => RefreshSecondaryCameraListSafe());
+            RefreshSecondaryCameraListCommand = new SimpleCommand(RefreshSecondaryCameraListSafe);
             OpenDriverSettingsCommand = new SimpleAsyncCommand(OpenDriverSettingsAsync);
             ConnectSecondaryCommand = new SimpleAsyncCommand(ConnectSecondaryAsync);
             DisconnectSecondaryCommand = new SimpleAsyncCommand(DisconnectSecondaryAsync);
 
             StartSecondaryAutofocusCommand = new SimpleAsyncCommand(StartSecondaryAutofocusAsync);
-            CancelSecondaryAutofocusCommand = new RelayCommand(_ => CancelSecondaryAutofocus(), _ => CanCancelSecondaryAutofocus);
+            CancelSecondaryAutofocusCommand = new SimpleCommand(CancelSecondaryAutofocus, () => CanCancelSecondaryAutofocus);
 
             //Command Definitions
             CaptureOnlyCommand = new SimpleAsyncCommand(CaptureOnlyAsync);
@@ -1126,7 +1235,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
 
             StatusText = "Waiting for MEF imports…";
-            this.profileService.ProfileChanged += ProfileService_ProfileChanged;
+            dockableProfileService.ProfileChanged += ProfileService_ProfileChanged;
         }
 
         public void OnImportsSatisfied() {
@@ -1208,9 +1317,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             UnwireFocuserReferenceService();
             StopMountPoll();
 
-            if (profileService != null) {
-                profileService.ProfileChanged -= ProfileService_ProfileChanged;
-            }
+            dockableProfileService.ProfileChanged -= ProfileService_ProfileChanged;
             try { secondaryCameraServiceCached?.Dispose(); } catch { }
             secondaryCameraServiceCached = null;
             secondaryCameraProgIdCached = null;
@@ -1228,7 +1335,6 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
             // In case the focuser becomes available after a profile switch
             if (SecondaryAutofocus == null) {
-                secondaryAutofocusInitialized = false;
                 EnsureSecondaryAutofocus();
             }
         }
@@ -1651,7 +1757,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 var deltaRaDeg = NormalizeDeltaDeg(compare.raDeg - mainRaDeg);
                 var deltaDecDeg = compare.decDeg - mainDecDeg;
 
-                var decMidRad = ((mainDecDeg + compare.decDeg) * 0.5) * Math.PI / 180.0;
+                var decMidRad = (mainDecDeg + compare.decDeg) * 0.5 * Math.PI / 180.0;
                 var deltaRaArcsec = deltaRaDeg * 3600.0 * Math.Cos(decMidRad);
                 var deltaDecArcsec = deltaDecDeg * 3600.0;
 
@@ -1683,60 +1789,74 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             if (IsActionActive) return;
             using var _ = BeginActionScope();
 
+            if (!EnsureMountedSecondaryActionReady()) return;
+
+            var solve = await CaptureAndSolveGuiderAsync(updateUi: true).ConfigureAwait(false);
+            if (!solve.success) return;
+
+            var target = UpdateSolveUiAndGetMountTarget(solve.raDeg, solve.decDeg);
+
+            if (UseSlewInsteadOfSync) {
+                await CenterAfterCaptureAsync().ConfigureAwait(false);
+                return;
+            }
+
+            await SyncSolvedTargetAsync(target, lastCorrectedSolveDeg.HasValue).ConfigureAwait(false);
+        }
+
+        private bool EnsureMountedSecondaryActionReady() {
             UpdateMountConnectionState();
 
             if (MountState != MountConnectionState.ConnectedWithCoords) {
                 StatusText = "Mount not ready ❌";
                 DetailsText = "Mount not connected OR coordinates not available.";
-                return;
+                return false;
             }
 
             if (!IsSecondaryConnected) {
                 StatusText = "Secondary camera not connected ❌";
                 DetailsText = "Click Connect first.";
-                return;
+                return false;
             }
 
-            var solve = await CaptureAndSolveGuiderAsync(updateUi: true).ConfigureAwait(false);
-            if (!solve.success) return;
+            return true;
+        }
 
-            // compute corrected (only if enabled + set)
-            lastCorrectedSolveDeg = ComputeCorrectedIfEnabled(solve.raDeg, solve.decDeg);
-            var target = lastCorrectedSolveDeg ?? (solve.raDeg, solve.decDeg);
+        private (double raDeg, double decDeg) UpdateSolveUiAndGetMountTarget(double guiderRaDeg, double guiderDecDeg) {
+            lastCorrectedSolveDeg = ComputeCorrectedIfEnabled(guiderRaDeg, guiderDecDeg);
+            var target = lastCorrectedSolveDeg ?? (guiderRaDeg, guiderDecDeg);
 
-            // remember guider solve (for UI)
-            lastGuiderSolveDeg = (solve.raDeg, solve.decDeg);
-            LastGuiderSolveText = FormatSolvedLine("Guider", solve.raDeg, solve.decDeg);
+            lastGuiderSolveDeg = (guiderRaDeg, guiderDecDeg);
+            LastGuiderSolveText = FormatSolvedLine("Guider", guiderRaDeg, guiderDecDeg);
 
             CorrectedSolveText = lastCorrectedSolveDeg.HasValue
                 ? FormatSolvedLine("Corrected", lastCorrectedSolveDeg.Value.raDeg, lastCorrectedSolveDeg.Value.decDeg)
                 : "Corrected: (No offset set) → using solve as-is.";
 
-            if (!TryToCoordinates(target.raDeg, target.decDeg, out var targetCoords)) {
+            return target;
+        }
+
+        private async Task CenterAfterCaptureAsync() {
+            if (!HasOffsetSet) {
+                StatusText = "Center not available ❌";
+                DetailsText = "Capture + Slew (Center) requires a calibrated offset.";
                 return;
             }
 
-            if (UseSlewInsteadOfSync) {
-                // Capture + Slew (Center) requires an active + calibrated offset
-                if (!HasOffsetSet) {
-                    StatusText = "Center not available ❌";
-                    DetailsText = "Capture + Slew (Center) requires a calibrated offset.";
-                    return;
-                }
+            var thr = PluginSettings?.Settings?.CenteringThresholdArcmin ?? 1.0;
+            var max = PluginSettings?.Settings?.CenteringMaxAttempts ?? 5;
 
-                var thr = PluginSettings?.Settings?.CenteringThresholdArcmin ?? 1.0;
-                var max = PluginSettings?.Settings?.CenteringMaxAttempts ?? 5;
+            await CenterWithSecondaryAsync(thr, max, CancellationToken.None).ConfigureAwait(false);
+        }
 
-                await CenterWithSecondaryAsync(thr, max, CancellationToken.None).ConfigureAwait(false);
-                return;
-            }
-
-            // Capture + Sync
+        private async Task SyncSolvedTargetAsync((double raDeg, double decDeg) target, bool usedCorrectedCoordinates) {
             if (TelescopeMediator == null) {
                 StatusText = "Cannot sync mount ❌";
                 DetailsText = "TelescopeMediator not available (MEF import failed).";
                 return;
             }
+
+            if (!TryToCoordinates(target.raDeg, target.decDeg, out var targetCoords)) return;
 
             try {
                 StatusText = "Syncing mount…";
@@ -1746,10 +1866,11 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
                 StatusText = ok ? "Capture + Sync done ✅" : "Sync failed ❌";
                 DetailsText = ok
-                    ? $"Mount synced to {(lastCorrectedSolveDeg.HasValue ? "corrected" : "solved")} coordinates." +
+                    ? $"Mount synced to {(usedCorrectedCoordinates ? "corrected" : "solved")} coordinates." +
                       $"RA={target.raDeg:0.######}°, Dec={target.decDeg:0.######}°"
                     : $"Sync returned false. Target was: RA={target.raDeg:0.######}°, Dec={target.decDeg:0.######}°";
             } catch (Exception ex) {
+                Logger.Error($"[PlateSolvePlus] Capture + Sync failed: {ex}");
                 StatusText = "Sync failed ❌";
                 DetailsText = ex.ToString();
             }
@@ -1850,8 +1971,9 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 var progId = SelectedSecondaryCameraProgId ?? FallbackSecondaryCameraProgId;
                 Context.SetActiveSecondaryCameraProgId(progId);
                 Context.CurrentSecondaryCameraProgId = progId;
+                var cameraService = SecondaryCameraService;
 
-                if (!SecondaryCameraService.IsConnected) {
+                if (!cameraService.IsConnected) {
                     if (updateUi) {
                         StatusText = "Secondary camera not connected ❌";
                         DetailsText = "Click Connect first.";
@@ -1883,12 +2005,14 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                     DetailsText = $"Exposure={exposure:0.###}s, Bin={bin}, Gain={(gain.HasValue ? gain.Value.ToString() : "auto")}";
                 }
 
-                var frame = await SecondaryCameraService.CaptureAsync(
+                var frame = await cameraService.CaptureAsync(
                     exposureSeconds: exposure,
                     binX: bin,
                     binY: bin,
                     gain: gain,
                     ct: CancellationToken.None).ConfigureAwait(false);
+
+                ValidateCapturedFrame(frame);
 
                 ushort[] packed = ConvertToUShortRowMajor(frame.Pixels, frame.Width, frame.Height);
 
@@ -1901,7 +2025,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                     };
 
                     var preview = previewRenderService.RenderPreview(
-                        new CapturedFrame(frame.Width, frame.Height, frame.BitDepth, frame.Pixels, isBayered: true, bayerPattern: BayerPattern.RGGB),
+                        frame,
                         opts);
 
                     await System.Windows.Application.Current.Dispatcher.InvokeAsync(() => {
@@ -1924,7 +2048,8 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                 int timeoutSec = s?.SolverTimeoutSec ?? 60;
 
                 double focalLengthMm = GuideFocalLengthMm;
-                double pixelSizeUm = GuidePixelSizeUm;
+                var pixelSize = await ResolvePlateSolvePixelSizeUmAsync(cameraService, bin, CancellationToken.None).ConfigureAwait(false);
+                double pixelSizeUm = pixelSize.value;
 
                 var parameter = NinaPlateSolveParameterFactory.Create(
                     searchRadiusDeg: searchRadiusDeg,
@@ -1934,7 +2059,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                     pixelSizeUm: pixelSizeUm
                 );
 
-                var psSettings = profileService.ActiveProfile.PlateSolveSettings;
+                var psSettings = dockableProfileService.ActiveProfile.PlateSolveSettings;
                 var solver = psFactory.GetPlateSolver(psSettings);
 
                 if (updateUi) StatusText = "Solving…";
@@ -1961,7 +2086,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                         $"Frame: {frame.Width}x{frame.Height}, bitDepth={frame.BitDepth}\n" +
                         $"Exposure={exposure:0.###}s, Bin={bin}, Gain={(gain.HasValue ? gain.Value.ToString() : "auto")}\n" +
                         $"SearchRadius={searchRadiusDeg}°, Downsample={downsample}, Timeout={timeoutSec}s\n" +
-                        $"FocalLength={focalLengthMm}mm, PixelSize={pixelSizeUm}µm";
+                        $"FocalLength={focalLengthMm}mm, PixelSize={pixelSizeUm:0.###}µm ({pixelSize.source})";
 
                     Context.SetLastGuiderSolve(new GuiderSolveSnapshot(
                         utcTimestamp: DateTime.UtcNow,
@@ -2074,7 +2199,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
             try {
                 var ascomTask = Task.Run(() => AscomDiscovery.GetCameras());
 
-                var alpacaDiscovery = new AlpacaDiscovery(profileService); // <-- dein IProfileService
+                var alpacaDiscovery = new AlpacaDiscovery(dockableProfileService);
                 var alpacaTask = alpacaDiscovery.GetCamerasAsync(
                     udpTimeout: TimeSpan.FromMilliseconds(5000),
                     ct: CancellationToken.None);
@@ -2185,7 +2310,58 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         // ============================
         // Helpers: data conversion + coords parsing
         // ============================
+        private async Task<(double value, string source)> ResolvePlateSolvePixelSizeUmAsync(ISecondaryCameraService cameraService, int bin, CancellationToken ct) {
+            bin = Math.Max(1, bin);
+            var manual = ClampPixelSizeUm(GuidePixelSizeUm);
+            string WithBinning(string source) => bin > 1 ? $"{source}, bin {bin} effective" : source;
+
+            if (!UseCameraPixelSize) {
+                return (manual * bin, WithBinning("manual setting"));
+            }
+
+            try {
+                var cameraPixelSize = await cameraService.GetPixelSizeUmAsync(ct).ConfigureAwait(false);
+                if (IsValidPixelSizeUm(cameraPixelSize)) {
+                    return (cameraPixelSize!.Value * bin, WithBinning("camera"));
+                }
+            } catch (Exception ex) {
+                Logger.Debug($"[PlateSolvePlus] Camera pixel size read failed: {ex.Message}");
+            }
+
+            return (manual * bin, WithBinning("manual fallback"));
+        }
+
+        private static bool IsValidPixelSizeUm(double? value) =>
+            value.HasValue &&
+            !double.IsNaN(value.Value) &&
+            !double.IsInfinity(value.Value) &&
+            value.Value >= 0.1 &&
+            value.Value <= 100.0;
+
+        private static double ClampPixelSizeUm(double value) {
+            if (double.IsNaN(value) || double.IsInfinity(value)) return 3.75;
+            if (value < 0.1) return 0.1;
+            if (value > 100.0) return 100.0;
+            return value;
+        }
+
+        private static void ValidateCapturedFrame(CapturedFrame frame) {
+            if (frame == null) throw new ArgumentNullException(nameof(frame));
+            if (frame.Width <= 0 || frame.Height <= 0)
+                throw new InvalidOperationException($"Captured frame has invalid dimensions: {frame.Width}x{frame.Height}.");
+            if (frame.Pixels.GetLength(0) != frame.Height || frame.Pixels.GetLength(1) != frame.Width)
+                throw new InvalidOperationException(
+                    $"Captured frame pixel dimensions do not match metadata: pixels={frame.Pixels.GetLength(1)}x{frame.Pixels.GetLength(0)}, metadata={frame.Width}x{frame.Height}.");
+            if (frame.BitDepth <= 0)
+                throw new InvalidOperationException($"Captured frame has invalid bit depth: {frame.BitDepth}.");
+        }
+
         private static ushort[] ConvertToUShortRowMajor(int[,] pixels, int width, int height) {
+            if (pixels == null) throw new ArgumentNullException(nameof(pixels));
+            if (width <= 0 || height <= 0) throw new ArgumentOutOfRangeException(nameof(width), "Width and height must be > 0.");
+            if (pixels.GetLength(0) != height || pixels.GetLength(1) != width)
+                throw new ArgumentException("Pixel dimensions do not match width/height.", nameof(pixels));
+
             var packed = new ushort[width * height];
             int idx = 0;
 
@@ -2274,7 +2450,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         }
 
         private static bool TryCreateAngleFromDegrees(double deg, out Angle angle, out string why) {
-            angle = default;
+            angle = default!;
             why = "";
 
             var t = typeof(Angle);
@@ -2348,7 +2524,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         }
 
         private bool TryToCoordinates(double raDeg, double decDeg, out Coordinates coords) {
-            coords = default;
+            coords = default!;
 
             if (!TryCreateAngleFromDegrees(raDeg, out var ra, out var whyRa)) {
                 StatusText = "Cannot build Coordinates (Angle API mismatch) ❌";
@@ -2449,6 +2625,32 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         // Center Platesolving
         // =====================================
 
+        private async Task<bool?> TrySyncCenteringCoordinatesAsync(
+            (double raDeg, double decDeg) solvedMain,
+            int attempt,
+            int maxAttempts,
+            string statusPrefix) {
+            if (TelescopeMediator == null) {
+                StatusText = "Cannot sync mount ❌";
+                DetailsText = "TelescopeMediator not available (MEF import failed).";
+                return null;
+            }
+
+            if (!TryToCoordinates(solvedMain.raDeg, solvedMain.decDeg, out var solvedCoords)) {
+                return null;
+            }
+
+            try {
+                StatusText = $"{statusPrefix}: attempt {attempt}/{maxAttempts} – syncing…";
+                DetailsText = $"SyncTo(main): RA={solvedMain.raDeg:0.######}°, Dec={solvedMain.decDeg:0.######}°";
+
+                return await TelescopeMediator.Sync(solvedCoords).ConfigureAwait(false);
+            } catch (Exception ex) {
+                Logger.Debug($"[PlateSolvePlus] {statusPrefix} sync failed: {ex.Message}");
+                return false;
+            }
+        }
+
         private async Task CenterWithSecondaryAsync(double thresholdArcmin, int maxAttempts, CancellationToken ct) {
             UpdateMountConnectionState();
 
@@ -2515,22 +2717,13 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                     return;
                 }
 
-                bool syncOk = false;
-                try {
-                    if (!TryToCoordinates(solvedMain.raDeg, solvedMain.decDeg, out var solvedCoords)) return;
-
-                    StatusText = $"Centering: attempt {attempt}/{maxAttempts} – syncing…";
-                    DetailsText = $"SyncTo(main): RA={solvedMain.raDeg:0.######}°, Dec={solvedMain.decDeg:0.######}°";
-
-                    syncOk = await TelescopeMediator!.Sync(solvedCoords).ConfigureAwait(false);
-                } catch {
-                    syncOk = false;
-                }
+                var syncOk = await TrySyncCenteringCoordinatesAsync(solvedMain, attempt, maxAttempts, "Centering").ConfigureAwait(false);
+                if (!syncOk.HasValue) return;
 
                 double slewRa;
                 double slewDec;
 
-                if (syncOk) {
+                if (syncOk.Value) {
                     slewRa = desiredMain.raDeg;
                     slewDec = desiredMain.decDeg;
 
@@ -2678,22 +2871,13 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
                     return;
                 }
 
-                bool syncOk = false;
-                try {
-                    if (!TryToCoordinates(solvedMain.raDeg, solvedMain.decDeg, out var solvedCoords)) return;
-
-                    StatusText = $"Centering(target): attempt {attempt}/{maxAttempts} – syncing…";
-                    DetailsText = $"SyncTo(main): RA={solvedMain.raDeg:0.######}°, Dec={solvedMain.decDeg:0.######}°";
-
-                    syncOk = await TelescopeMediator!.Sync(solvedCoords).ConfigureAwait(false);
-                } catch {
-                    syncOk = false;
-                }
+                var syncOk = await TrySyncCenteringCoordinatesAsync(solvedMain, attempt, maxAttempts, "Centering(target)").ConfigureAwait(false);
+                if (!syncOk.HasValue) return;
 
                 double slewRa;
                 double slewDec;
 
-                if (syncOk) {
+                if (syncOk.Value) {
                     slewRa = desiredRaDeg;
                     slewDec = desiredDecDeg;
 
@@ -2754,22 +2938,34 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         }
 
         // API Wrapper Triggers
-        internal string ApiCaptureOnlyAsync() {
-            if (apiBusy) return "busy";
-            apiBusy = true;
+        private bool TryBeginApiAction() =>
+            Interlocked.CompareExchange(ref apiBusy, 1, 0) == 0;
+
+        private void EndApiAction() =>
+            Interlocked.Exchange(ref apiBusy, 0);
+
+        private string QueueApiAction(Func<Task> action) {
+            if (!TryBeginApiAction()) return "busy";
+
             _ = Task.Run(async () => {
-                try { await CaptureOnlyAsync().ConfigureAwait(false); } finally { apiBusy = false; }
+                try {
+                    await action().ConfigureAwait(false);
+                } catch (Exception ex) {
+                    Logger.Error($"[PlateSolvePlus] API action failed: {ex}");
+                } finally {
+                    EndApiAction();
+                }
             });
+
             return "started";
         }
 
+        internal string ApiCaptureOnlyAsync() {
+            return QueueApiAction(CaptureOnlyAsync);
+        }
+
         internal string ApiCaptureAndSolveAsync() {
-            if (apiBusy) return "busy";
-            apiBusy = true;
-            _ = Task.Run(async () => {
-                try { await CaptureAndSyncOrSlewAsync().ConfigureAwait(false); } finally { apiBusy = false; }
-            });
-            return "started";
+            return QueueApiAction(CaptureAndSyncOrSlewAsync);
         }
 
 
@@ -2778,20 +2974,10 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         /// Runs async (fire-and-forget) and returns a small state string for the REST endpoint.
         /// </summary>
         internal string ApiCaptureAndSyncAsync() {
-            if (apiBusy) return "busy";
-            apiBusy = true;
-
-            _ = Task.Run(async () => {
-                try {
-                    // Ensure correct mode
-                    UseSlewInsteadOfSync = false;
-                    await CaptureAndSyncOrSlewAsync().ConfigureAwait(false);
-                } finally {
-                    apiBusy = false;
-                }
+            return QueueApiAction(async () => {
+                UseSlewInsteadOfSync = false;
+                await CaptureAndSyncOrSlewAsync().ConfigureAwait(false);
             });
-
-            return "started";
         }
 
         /// <summary>
@@ -2799,20 +2985,10 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         /// Runs async (fire-and-forget) and returns a small state string for the REST endpoint.
         /// </summary>
         internal string ApiCaptureAndCenterAsync() {
-            if (apiBusy) return "busy";
-            apiBusy = true;
-
-            _ = Task.Run(async () => {
-                try {
-                    // Ensure center mode
-                    UseSlewInsteadOfSync = true;
-                    await CaptureAndSyncOrSlewAsync().ConfigureAwait(false);
-                } finally {
-                    apiBusy = false;
-                }
+            return QueueApiAction(async () => {
+                UseSlewInsteadOfSync = true;
+                await CaptureAndSyncOrSlewAsync().ConfigureAwait(false);
             });
-
-            return "started";
         }
 
         /// <summary>
@@ -2820,28 +2996,43 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
         /// Runs async (fire-and-forget) and returns a small state string for the REST endpoint.
         /// </summary>
         internal string ApiSlewToTargetAndCenterAsync(double targetRaDeg, double targetDecDeg) {
-            if (apiBusy) return "busy";
-            apiBusy = true;
-
-            _ = Task.Run(async () => {
-                try {
-                    TargetRaDeg = targetRaDeg;
-                    TargetDecDeg = targetDecDeg;
-                    await SlewToTargetAndCenterAsync().ConfigureAwait(false);
-                } finally {
-                    apiBusy = false;
-                }
+            return QueueApiAction(async () => {
+                TargetRaDeg = targetRaDeg;
+                TargetDecDeg = targetDecDeg;
+                await SlewToTargetAndCenterAsync().ConfigureAwait(false);
             });
-
-            return "started";
         }
 
         internal string ApiCalibrateOffsetAsync() {
-            if (apiBusy) return "busy";
-            apiBusy = true;
+            return QueueApiAction(CalibrateOffsetAsync);
+        }
+
+        internal string ApiStartSecondaryAutofocusAsync(SecondaryAutofocusSettings? settingsOverride = null) {
+            if (!TryBeginApiAction()) return "busy";
+
+            try {
+                if (!TryStartSecondaryAutofocus(settingsOverride)) {
+                    EndApiAction();
+                    ClearSecondaryAutofocusOverride();
+                    return "failed";
+                }
+            } catch {
+                EndApiAction();
+                ClearSecondaryAutofocusOverride();
+                throw;
+            }
+
             _ = Task.Run(async () => {
-                try { await CalibrateOffsetAsync().ConfigureAwait(false); } finally { apiBusy = false; }
+                try {
+                    await WaitForSecondaryAutofocusCompletionAsync(250, CancellationToken.None).ConfigureAwait(false);
+                } catch (Exception ex) {
+                    Logger.Error($"[PlateSolvePlus] API secondary autofocus action failed: {ex}");
+                } finally {
+                    ClearSecondaryAutofocusOverride();
+                    EndApiAction();
+                }
             });
+
             return "started";
         }
 
@@ -2853,7 +3044,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
             return new {
                 importsReady = importsReady,
-                busy = apiBusy,
+                busy = Volatile.Read(ref apiBusy) != 0,
                 mountConnected = IsMountConnected,
                 mountState = MountState.ToString(),
                 secondaryConnected = IsSecondaryConnected,
@@ -2927,9 +3118,10 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusDockables {
 
             if (apiHost == null) {
                 Logger.Info("[PlateSolvePlus] EnsureApiHostState -> CREATE host");
-                apiHost = new PlateSolvePlusApiHost(this, port, true, requireToken, token);
+                var host = new PlateSolvePlusApiHost(this, port, true, requireToken, token);
+                apiHost = host;
                 Logger.Info($"[PlateSolvePlus] EnsureApiHostState -> CREATED apiHostNull={(apiHost == null)}");
-                apiHost.Start();
+                host.Start();
                 Logger.Info("[PlateSolvePlus] EnsureApiHostState -> START called");
                 return;
             }

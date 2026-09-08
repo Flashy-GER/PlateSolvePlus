@@ -35,7 +35,6 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
         private readonly SemaphoreSlim _runLock = new(1, 1);
         private CancellationTokenSource? _internalCts;
         private string? _disconnectReason;
-        private bool _plotOpen = false;
 
         public SecondaryAutofocusService(
             ISecondaryCameraCaptureService capture,
@@ -44,7 +43,7 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryAutofocus.Services {
             ICurveFitService fit,
             ISecondaryAfStatusPublisher publisher,
             Dispatcher? uiDispatcher = null,
-            Equipment.Interfaces.Mediator.IFocuserMediator focuserMediator = null,
+            Equipment.Interfaces.Mediator.IFocuserMediator? focuserMediator = null,
             ISecondaryAutofocusPlotSink? plotSink = null,
             Func<bool>? isCameraConnected = null,
             Func<bool>? isFocuserConnected = null

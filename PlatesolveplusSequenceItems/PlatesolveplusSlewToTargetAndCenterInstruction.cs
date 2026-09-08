@@ -20,7 +20,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusSequenceItems {
     [JsonObject(MemberSerialization.OptIn)]
     public sealed class PlatesolveplusSlewToTargetAndCenterInstruction : SequenceItem {
 
-        private static bool templatesLoaded = false;
+        private static readonly bool templatesLoaded = false;
         private static readonly object templateLock = new object();
 
         static PlatesolveplusSlewToTargetAndCenterInstruction() {
@@ -166,7 +166,7 @@ namespace NINA.Plugins.PlateSolvePlus.PlatesolveplusSequenceItems {
             return _dispatcher.InvokeAsync(func, DispatcherPriority.Background).Task;
         }
 
-        private async Task WaitUntilNotBusy(CancellationToken token, int timeoutSec, int pollMs, IProgress<ApplicationStatus> progress) {
+        private async Task WaitUntilNotBusy(CancellationToken token, int timeoutSec, int pollMs, IProgress<ApplicationStatus>? progress) {
             var start = DateTime.UtcNow;
 
             while (true) {

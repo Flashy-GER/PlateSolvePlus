@@ -44,6 +44,20 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryCamera {
             }
         }
 
+        public async Task<double?> GetPixelSizeUmAsync(CancellationToken ct) {
+            double? x = null;
+            double? y = null;
+
+            try { x = await _client.GetPixelSizeXAsync(ct).ConfigureAwait(false); } catch { }
+            try { y = await _client.GetPixelSizeYAsync(ct).ConfigureAwait(false); } catch { }
+
+            if (TryGetValidPixelSize(x, out var xValue) && TryGetValidPixelSize(y, out var yValue)) return (xValue + yValue) / 2.0;
+            if (TryGetValidPixelSize(x, out xValue)) return xValue;
+            if (TryGetValidPixelSize(y, out yValue)) return yValue;
+
+            return null;
+        }
+
         public async Task<SecondaryCameraFrame> CaptureAsync(
             double exposureSeconds,
             int binX,
@@ -158,6 +172,18 @@ namespace NINA.Plugins.PlateSolvePlus.SecondaryCamera {
             if (bd > 32) bd = 32;
 
             return bd;
+        }
+
+        private static bool IsValidPixelSize(double? value) =>
+            value.HasValue &&
+            !double.IsNaN(value.Value) &&
+            !double.IsInfinity(value.Value) &&
+            value.Value >= 0.1 &&
+            value.Value <= 100.0;
+
+        private static bool TryGetValidPixelSize(double? value, out double pixelSizeUm) {
+            pixelSizeUm = value.GetValueOrDefault();
+            return IsValidPixelSize(value);
         }
     }
 }
